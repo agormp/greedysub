@@ -1,9 +1,9 @@
-# hobohm: command line program for selecting representative subset of data, based on list of pairwise similarities (or distances) between items.
+# greedyreduce: command line program for selecting representative subset of data, based on list of pairwise similarities (or distances) between items.
 
-[![PyPI downloads](https://static.pepy.tech/personalized-badge/hobohm?period=total&units=international_system&left_color=grey&right_color=blue&left_text=downloads)](https://pepy.tech/project/hobohm)
-![](https://img.shields.io/badge/version-1.1.0-blue)
+[![PyPI downloads](https://static.pepy.tech/personalized-badge/greedureduce?period=total&units=international_system&left_color=grey&right_color=blue&left_text=downloads)](https://pepy.tech/project/greedureduce)
+![](https://img.shields.io/badge/version-0.1.0-blue)
 
-The `hobohm` program aims to select a representative subset from a collection of items for which the pairwise similarities are known.
+The `greedureduce` program aims to select a representative subset from a collection of items for which the pairwise similarities are known.
 
 The program takes as input (1) a text-file containing a list of pairwise similarities between items in a data set, and (2) a cutoff for deciding when two items are too similar (i.e., when they are "neighbors").
 
