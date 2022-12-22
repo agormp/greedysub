@@ -1,3 +1,5 @@
 tests/explore.ipynb
 tests/hobohm_randdata.py
 tests/.ipynb_checkpoints/
+tests/__pycache__/
+

@@ -10,15 +10,17 @@ def main():
     args = parse_commandline(parser)
     graph = NeighborGraph(args)
 
-    if args.keepfile:
-        graph.remove_keepfile_neighbors(args.keepfile)
+    # If input has no neighbors: do nothing, print results. Otherwise: proceed
+    if graph.max_degree > 0:
+        if args.keepfile:
+            graph.remove_keepfile_neighbors(args.keepfile)
 
-    if args.from_bottom:
-        graph.reduce_from_bottom()
-    else:
-        graph.reduce_from_top()
+        if args.from_bottom:
+            graph.reduce_from_bottom()
+        else:
+            graph.reduce_from_top()
 
-    graph.write_results()
+    graph.write_results(args.outfile)
 
 ################################################################################################
 
@@ -32,7 +34,7 @@ def build_parser():
                              "(option -d) for each pair of items: name1 name2 value")
 
     parser.add_argument("outfile", metavar='OUTFILE', default="-",
-                        help="write subset of names to this file (one name per line)"
+                        help="file contatinig reduced subset of names (one name per line)")
 
     distsimgroup = parser.add_mutually_exclusive_group()
     distsimgroup.add_argument('-s', action='store_true', dest="values_are_sim",
@@ -43,10 +45,10 @@ def build_parser():
                                     "(smaller values = more similar)")
 
     algorithmgroup = parser.add_mutually_exclusive_group()
-    algorithmgroup.add_argument('-b', '--frombottom', action='store_true', dest="from_bottom",
-                              help="Iteratively remove neighbors of least connected node, until no neighbors left"
-    algorithmgroup.add_argument('-t', '--fromtop', action='store_true', dest="from_top",
-                              help="Iteratively remove most connected node, until no neighbors left"
+    algorithmgroup.add_argument('-b', action='store_true', dest="from_bottom",
+                              help="Iteratively remove neighbors of least connected node, until no neighbors left")
+    algorithmgroup.add_argument('-t', action='store_true', dest="from_top",
+                              help="Iteratively remove most connected node, until no neighbors left")
 
     parser.add_argument("-c",  action="store", type=float, dest="cutoff", metavar="CUTOFF",
                           help="cutoff for deciding which pairs are neighbors")
@@ -86,47 +88,44 @@ class NeighborGraph:
     def __init__(self, args):
 
         # Initialize dictionary keeping track of neighbors for each node
-        # Code duplication to avoid repeated tests for args.values_are_sim
         self.neighbors = defaultdict(set)
+        self.nodes = set()
         cutoff = args.cutoff
+        valuesum = 0
         with open(args.infile, "r") as infile:
-            if args.values_are_sim:
-                for line in infile:
-                    name1,name2,value = line.split()
-                    if name1 != name2:
-                        value = float(value)
-                        if value < cutoff:
-                            self.neighbors[name1].add(name2)
-                            self.neighbors[name2].add(name1)
-            elif args.values_are_dist:
-                for line in infile:
-                    name1,name2,value = line.split()
-                    if name1 != name2:
-                        value = float(value)
+            for line in infile:
+                name1,name2,value = line.split()
+                if name1 != name2:
+                    self.nodes.update([name1,name2])
+                    value = float(value)
+                    valuesum += value
+                    if args.values_are_sim:
                         if value > cutoff:
                             self.neighbors[name1].add(name2)
                             self.neighbors[name2].add(name1)
+                    else:
+                        if value < cutoff:
+                            self.neighbors[name1].add(name2)
+                            self.neighbors[name2].add(name1)
 
-        # Initialize dictionary keeping track of how many neighbors each item has
         self.neighbor_count = {}
-        degree_sum = 0
+        degreelist = []
         for name in self.neighbors:
             degree = len(self.neighbors[name])
             self.neighbor_count[name] = degree
-            degree_sum += degree
-
-        # Set other graph summaries
-        self.orignum = len(self.neighbors)
-        self.average_degree = degree_sum / self.orignum
-        _,self.max_degree = self.most_neighbors()
-        _,self.min_degree = self.fewest_neighbors()
+            degreelist.append(degree)
+        self.orignum = len(self.nodes)
+        self.average_degree = sum(degreelist) / self.orignum
+        self.max_degree = max(degreelist, default=0)
+        self.min_degree = min(degreelist, default=0)
+        self.average_dist = valuesum * 2 / (self.orignum * (self.orignum - 1))
 
     ############################################################################################
 
     def most_neighbors(self):
         """Returns tuple: (node_with_most_nb, max_num_nb)"""
 
-        node_with_most_nb, max_num_nb = max(self.neighbor_count.items(), key=itemgetter(1))
+        node_with_most_nb, max_num_nb = max(self.neighbor_count.items(), key=itemgetter(1), default=(None,0))
         return (node_with_most_nb, max_num_nb)
 
     ############################################################################################
@@ -134,7 +133,7 @@ class NeighborGraph:
     def fewest_neighbors(self):
         """Returns tuple: (node_with_fewest_nb, min_num_nb)"""
 
-        node_with_fewest_nb, min_num_nb = min(self.neighbor_count.items(), key=itemgetter(1))
+        node_with_fewest_nb, min_num_nb = min(self.neighbor_count.items(), key=itemgetter(1), default=(None,0))
         return (node_with_fewest_nb, min_num_nb)
 
     ############################################################################################
@@ -143,10 +142,11 @@ class NeighborGraph:
         """Removes node from graph"""
 
         del self.neighbor_count[nodename]
-        del self.neighbors[nodename]
         for nb in self.neighbors[nodename]:
             self.neighbor_count[nb] -= 1
             self.neighbors[nb].remove(nodename)
+        del self.neighbors[nodename]
+        self.nodes.remove(nodename)
 
     ############################################################################################
 
@@ -163,7 +163,8 @@ class NeighborGraph:
     def remove_neighbors(self, nodename):
         """Removes neighbors of nodename from graph"""
 
-        for nb in self.neighbors[nodename]:
+        neighbors = self.neighbors[nodename].copy()
+        for nb in neighbors:
             self.remove_node(nb)
 
     ############################################################################################
@@ -211,17 +212,29 @@ class NeighborGraph:
 
     ############################################################################################
 
-    def write_results(self):
+    def write_results(self, outfilename):
         """Write results to outfile, and extra info to stdout"""
 
-        print("Names in reduced set written to {}\n".format(self.keepfile))
-        print("Maximum degree: {:>4,}".format(self.max_degree))
-        print("Minimum degree: {:>4,}".format(self.min_degree))
-        print("Average degree: {:>4,}".format(self.average_degree))
-        print("Number in original set: {:>10,}".format(self.orignum))
-        print("Number in reduced set: {:>10,}".format(len(self.neighbors)))
-        with open(self.outfile, "w") as outfile:
-            for name in self.neighbors:
+        print("\n\tNames in reduced set written to {}\n".format(outfilename))
+
+        print("\tNumber in original set: {:>10,}".format(self.orignum))
+        print("\tNumber in reduced set: {:>11,}\n".format(len(self.neighbors)))
+
+        print("\tNode degree:")
+        print("\t    min: {:>7,}".format(self.min_degree))
+        print("\t    max: {:>7,}".format(self.max_degree))
+        print("\t    ave: {:>10,.2f}\n".format(self.average_degree))
+
+        print("\tNode distances:")
+        #print("\t    min: {:>7,}".format(self.min_degree))
+        #print("\t    max: {:>7,}".format(self.max_degree))
+        print("\t    ave: {:>10,.2f}\n".format(self.average_dist))
+
+        with open(outfilename, "w") as outfile:
+            for name in self.nodes:
                 outfile.write("{}\n".format(name))
 
-    ############################################################################################
+################################################################################################
+
+if __name__ == "__main__":
+    main()
