@@ -15,12 +15,12 @@ def main():
         if args.keepfile:
             graph.remove_keepfile_neighbors()
 
-        if args.from_bottom:
+        if args.frombottom:
             graph.reduce_from_bottom()
         else:
             graph.reduce_from_top()
 
-    graph.write_results(args.outfile)
+    graph.write_results(args)
 
 ################################################################################################
 
@@ -45,9 +45,9 @@ def build_parser():
                                     "(smaller values = more similar)")
 
     algorithmgroup = parser.add_mutually_exclusive_group()
-    algorithmgroup.add_argument('-b', "--frombottom", action='store_true', dest="from_bottom",
+    algorithmgroup.add_argument('-b', "--frombottom", action='store_true',
                               help="iteratively remove neighbors of least connected node, until no neighbors left")
-    algorithmgroup.add_argument('-t', "--fromtop", action='store_true', dest="from_top",
+    algorithmgroup.add_argument('-t', "--fromtop", action='store_true',
                               help="iteratively remove most connected node, until no neighbors left")
 
     parser.add_argument("-c",  action="store", type=float, dest="cutoff", metavar="CUTOFF",
@@ -71,8 +71,8 @@ def parse_commandline(parser):
     if ((args.values_are_sim and args.values_are_dist) or
        ((not args.values_are_sim ) and (not args.values_are_dist))):
         parser.error("Must specify either option -s (similarity) or option -d (distance)")
-    if ((args.from_bottom and args.from_top) or
-       ((not args.from_bottom ) and (not args.from_top))):
+    if ((args.frombottom and args.fromtop) or
+       ((not args.frombottom ) and (not args.fromtop))):
         parser.error("Must specify either option -b (from bottom) or option -t (from top)")
     if args.cutoff is None:
         parser.error("Must provide cutoff (option -c)")
@@ -90,12 +90,13 @@ class NeighborGraph:
         # self.neighbors: dict(node:set(node's neighbors))
         # self.neighbor_count: dict(node:count of node's neighbors)
         # Note: only nodes WITH neighbors are keys in these two dicts
+        # Note 2: these dicts are changed by algorithm during iteration
 
         # self.nodes: set(all nodes)
-        # self.orignum: number of nodes in graph before reducing
-        # self.average_degree: average no. connections to a node before reducing
-        # self.max/min_degree: max/min no. connections to a node before reducing
-        # self.average_dist: average distance between pairs of nodes before reducing
+        # self.origdata["orignum"]: number of nodes in graph before reducing
+        # self.origdata["average_degree"]: average no. connections to a node before reducing
+        # self.origdata["max/min_degree"]: max/min no. connections to a node before reducing
+        # self.origdata["average_dist"]: average distance between pairs of nodes before reducing
         self.neighbors = defaultdict(set)
         self.nodes = set()
         cutoff = args.cutoff
@@ -241,13 +242,13 @@ class NeighborGraph:
 
     ############################################################################################
 
-    def write_results(self, outfilename):
+    def write_results(self, args):
         """Write results to outfile, and extra info to stdout"""
 
-        print("\n\tNames in reduced set written to {}\n".format(outfilename))
+        print("\n\tNames in reduced set written to {}\n".format(args.outfile))
 
         print("\tNumber in original set: {:>10,}".format(self.origdata["orignum"]))
-        print("\tNumber in reduced set: {:>11,}\n".format(len(self.neighbors)))
+        print("\tNumber in reduced set: {:>11,}\n".format(len(self.nodes)))
 
         print("\tNode degree original set:")
         print("\t    min: {:>7,}".format(self.origdata["min_degree"]))
@@ -255,9 +256,10 @@ class NeighborGraph:
         print("\t    ave: {:>10,.2f}\n".format(self.origdata["average_degree"]))
 
         print("\tNode distances original set:")
-        print("\t    ave: {:>10,.2f}\n".format(self.origdata["average_dist"]))
+        print("\t    ave: {:>10,.2f}".format(self.origdata["average_dist"]))
+        print("\t    cutoff: {:>7,.2f}\n".format(args.cutoff))
 
-        with open(outfilename, "w") as outfile:
+        with open(args.outfile, "w") as outfile:
             for name in self.nodes:
                 outfile.write("{}\n".format(name))
 
