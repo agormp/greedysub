@@ -25,16 +25,16 @@ def main():
 ################################################################################################
 
 def build_parser():
-    parser = argparse.ArgumentParser(description = "Selects subset of data based on" +
+    parser = argparse.ArgumentParser(description = "Selects subset of items based on" +
                                     " list of pairwise similarities (or distances), such that no" +
                                     " retained items are close neighbors")
 
     parser.add_argument("infile", metavar='INFILE', default="-",
-                        help="file containing the similarity (option -s) or distance " +
+                        help="input file containing the similarity (option -s) or distance " +
                              "(option -d) for each pair of items: name1 name2 value")
 
     parser.add_argument("outfile", metavar='OUTFILE', default="-",
-                        help="file contatinig reduced subset of names (one name per line)")
+                        help="output file contatining reduced subset of names (one name per line).")
 
     distsimgroup = parser.add_mutually_exclusive_group()
     distsimgroup.add_argument('-s', action='store_true', dest="values_are_sim",
@@ -45,18 +45,18 @@ def build_parser():
                                     "(smaller values = more similar)")
 
     algorithmgroup = parser.add_mutually_exclusive_group()
-    algorithmgroup.add_argument('-b', action='store_true', dest="from_bottom",
-                              help="Iteratively remove neighbors of least connected node, until no neighbors left")
-    algorithmgroup.add_argument('-t', action='store_true', dest="from_top",
-                              help="Iteratively remove most connected node, until no neighbors left")
+    algorithmgroup.add_argument('-b', "--frombottom", action='store_true', dest="from_bottom",
+                              help="iteratively remove neighbors of least connected node, until no neighbors left")
+    algorithmgroup.add_argument('-t', "--fromtop", action='store_true', dest="from_top",
+                              help="iteratively remove most connected node, until no neighbors left")
 
     parser.add_argument("-c",  action="store", type=float, dest="cutoff", metavar="CUTOFF",
                           help="cutoff for deciding which pairs are neighbors")
 
     parser.add_argument("-k", action="store", dest="keepfile", metavar="KEEPFILE",
-                          help="file with names of items that must be kept (one name per line)")
+                          help="(optional) file with names of items that must be kept (one name per line)")
     parser.add_argument('--check', action='store_true', dest="check",
-                              help="Check validity of input data: Are all pairs listed? "
+                              help="check validity of input data: Are all pairs listed? "
                                     + "Are A B distances the same as B A?  "
                                     + "If yes: finish run and print results. "
                                     + "If no: abort run with error message")
