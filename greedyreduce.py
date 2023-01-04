@@ -13,7 +13,7 @@ def main():
     # If input has no neighbors: do nothing, print results. Otherwise: proceed
     if graph.max_degree > 0:
         if args.keepfile:
-            graph.remove_keepfile_neighbors(args.keepfile)
+            graph.remove_keepfile_neighbors()
 
         if args.from_bottom:
             graph.reduce_from_bottom()
@@ -87,7 +87,15 @@ class NeighborGraph:
 
     def __init__(self, args):
 
-        # Initialize dictionary keeping track of neighbors for each node
+        # self.neighbors: dict(node:set(node's neighbors))
+        # self.neighbor_count: dict(node:count of node's neighbors)
+        # Note: only nodes WITH neighbors are keys in these two dicts
+
+        # self.nodes: set(all nodes)
+        # self.orignum: number of nodes in graph before reducing
+        # self.average_degree: average no. connections to a node before reducing
+        # self.max/min_degree: max/min no. connections to a node before reducing
+        # self.average_dist: average distance between pairs of nodes before reducing
         self.neighbors = defaultdict(set)
         self.nodes = set()
         cutoff = args.cutoff
@@ -108,17 +116,30 @@ class NeighborGraph:
                             self.neighbors[name1].add(name2)
                             self.neighbors[name2].add(name1)
 
+        # Convert to regular dict to avoid gotchas having to do with key generation on access
+        # Python note: would it be faster to just use dict.setdefault() during creation?
+        self.neighbors = dict(self.neighbors)
+
         self.neighbor_count = {}
         degreelist = []
         for name in self.neighbors:
             degree = len(self.neighbors[name])
             self.neighbor_count[name] = degree
             degreelist.append(degree)
-        self.orignum = len(self.nodes)
-        self.average_degree = sum(degreelist) / self.orignum
-        self.max_degree = max(degreelist, default=0)
-        self.min_degree = min(degreelist, default=0)
-        self.average_dist = valuesum * 2 / (self.orignum * (self.orignum - 1))
+        self.origdata = {}
+        self.origdata["orignum"] = len(self.nodes)
+        self.origdata["average_degree"] =  sum(degreelist) / self.origdata["orignum"]
+        self.origdata["max_degree"] =  max(degreelist, default=0)
+        self.origdata["min_degree"] =  min(degreelist, default=0)
+        n = self.origdata["orignum"]
+        self.origdata["average_dist"] = valuesum * 2 / (n * (n - 1))
+
+        self.keepset = set()
+        if args.keepfile:
+            with open(args.keepfile, "r") as keepfile:
+                for line in keepfile:
+                    node = line.strip()
+                    self.keepset.add(node)
 
     ############################################################################################
 
@@ -141,11 +162,16 @@ class NeighborGraph:
     def remove_node(self, nodename):
         """Removes node from graph"""
 
-        del self.neighbor_count[nodename]
-        for nb in self.neighbors[nodename]:
-            self.neighbor_count[nb] -= 1
-            self.neighbors[nb].remove(nodename)
-        del self.neighbors[nodename]
+        if nodename in self.neighbors:
+            del self.neighbor_count[nodename]
+            for nb in self.neighbors[nodename]:
+                self.neighbor_count[nb] -= 1
+                if self.neighbor_count[nb] == 0:
+                    del self.neighbor_count[nb]
+                    del self.neighbors[nb]
+                else:
+                    self.neighbors[nb].remove(nodename)
+            del self.neighbors[nodename]
         self.nodes.remove(nodename)
 
     ############################################################################################
@@ -153,19 +179,45 @@ class NeighborGraph:
     def remove_connection(self, node1, node2):
         """Removes the edge from node1 to node2 in graph"""
 
-        self.neighbors[node1].remove(node2)
-        self.neighbors[node2].remove(node1)
-        self.neighbor_count[node1] -= 1
-        self.neighbor_count[node2] -= 1
+        try:
+            self.neighbors[node1].remove(node2)
+            self.neighbors[node2].remove(node1)
+            self.neighbor_count[node1] -= 1
+            if self.neighbor_count[node1] == 0:
+                del self.neighbor_count[node1]
+                del self.neighbors[node1]
+            self.neighbor_count[node2] -= 1
+            if self.neighbor_count[node2] == 0:
+                del self.neighbor_count[node2]
+                del self.neighbors[node2]
+        except Exception:
+            raise Exception(f"These nodes are not neighbors: {node1}, {node2}. Can't remove connection")
 
     ############################################################################################
 
     def remove_neighbors(self, nodename):
-        """Removes neighbors of nodename from graph"""
+        """Removes neighbors of nodename from graph, if there are any"""
 
-        neighbors = self.neighbors[nodename].copy()
-        for nb in neighbors:
-            self.remove_node(nb)
+        if nodename in self.neighbors:
+            for nb in self.neighbors[nodename].copy():
+                self.remove_node(nb)
+
+    ############################################################################################
+
+    def remove_keepfile_neighbors(self):
+        """Remove neighbors of nodes in keepfile.
+        If any nodes in keepfile are neighbors: disconnect, and print notification to stdout"""
+
+        # First, check if any pair of keepset members are neighbors.
+        # If so, print warning on stderr and hide this fact by removing connection in graph
+        for n1, n2 in itertools.combinations(self.keepset, 2):
+            if (n1 in self.neighbors) and (n2 in self.neighbors[n1]):
+                sys.stderr.write("# Keeplist warning: {} and {} are neighbors!\n".format(n1, n2))
+                self.remove_connection(n1, n2)
+
+        # Then, remove all neighbors of keepset members
+        for keepname in self.keepset:
+            self.remove_neighbors(keepname)
 
     ############################################################################################
 
@@ -189,46 +241,21 @@ class NeighborGraph:
 
     ############################################################################################
 
-    def remove_keepfile_neighbors(self, keepfile):
-        """Remove neighbors of nodes in keepfile.
-        If any nodes in keepfile are neighbors: disconnect, and print notification to stdout"""
-
-        # Read list of names to keep
-        keepset = set()
-        with open(keepfile, "r") as infile:
-            for line in infile:
-                keepset.add(line.rstrip())
-
-        # First, check if any pair of keepset members are neighbors.
-        # If so, print warning on stderr and hide this fact by removing connection in graph
-        for keepname1, keepname2 in itertools.combinations(keepset, 2):
-            if keepname2 in self.neighbors[keepname1]:
-                sys.stderr.write("# Keeplist warning: {} and {} are neighbors!".format(keepname1, keepname2))
-                self.remove_connection(keepname1, keepname2)
-
-        # Then, remove all neighbors of keepset members
-        for keepname in keepset:
-            self.remove_neighbors(keepname)
-
-    ############################################################################################
-
     def write_results(self, outfilename):
         """Write results to outfile, and extra info to stdout"""
 
         print("\n\tNames in reduced set written to {}\n".format(outfilename))
 
-        print("\tNumber in original set: {:>10,}".format(self.orignum))
+        print("\tNumber in original set: {:>10,}".format(self.origdata["orignum"]))
         print("\tNumber in reduced set: {:>11,}\n".format(len(self.neighbors)))
 
-        print("\tNode degree:")
-        print("\t    min: {:>7,}".format(self.min_degree))
-        print("\t    max: {:>7,}".format(self.max_degree))
-        print("\t    ave: {:>10,.2f}\n".format(self.average_degree))
+        print("\tNode degree original set:")
+        print("\t    min: {:>7,}".format(self.origdata["min_degree"]))
+        print("\t    max: {:>7,}".format(self.origdata["max_degree"]))
+        print("\t    ave: {:>10,.2f}\n".format(self.origdata["average_degree"]))
 
-        print("\tNode distances:")
-        #print("\t    min: {:>7,}".format(self.min_degree))
-        #print("\t    max: {:>7,}".format(self.max_degree))
-        print("\t    ave: {:>10,.2f}\n".format(self.average_dist))
+        print("\tNode distances original set:")
+        print("\t    ave: {:>10,.2f}\n".format(self.origdata["average_dist"]))
 
         with open(outfilename, "w") as outfile:
             for name in self.nodes:
