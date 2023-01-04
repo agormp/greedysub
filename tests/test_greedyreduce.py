@@ -4,15 +4,15 @@ import itertools
 import collections
 import copy
 
-
 ###################################################################################################
 ###################################################################################################
 
 class Args:
     """Used to mock args object normally returned from argparser"""
-    def __init__(self, infile, values_are_sim=False, cutoff=5, keepfile=None):
+    def __init__(self, infile, outfile=None, values_are_sim=False, cutoff=5, keepfile=None):
         self.cutoff = cutoff
         self.infile = infile
+        self.outfile = outfile
         self.values_are_sim = values_are_sim
         self.keepfile = keepfile
 
@@ -337,6 +337,14 @@ class Test_reduce_from_top:
         for node in unpaired_nodes:
             assert node in gr.nodes
 
+    def test_example_without_neighbors(self, random_pairfile_no_neighbors_50nodes):
+        distfile, nodes, pairs, cutoff = random_pairfile_no_neighbors_50nodes
+        args = Args(infile=distfile, cutoff=cutoff)
+        gr = greedyreduce.NeighborGraph(args)
+        gr.reduce_from_top()
+        assert len(gr.nodes) == 50
+        assert gr.neighbors == {}
+        assert gr.neighbor_count == {}
 
 ###################################################################################################
 ###################################################################################################
@@ -395,5 +403,98 @@ class Test_reduce_from_bottom:
         for node in unpaired_nodes:
             assert node in gr.nodes
 
+    def test_example_without_neighbors(self, random_pairfile_no_neighbors_50nodes):
+        distfile, nodes, pairs, cutoff = random_pairfile_no_neighbors_50nodes
+        args = Args(infile=distfile, cutoff=cutoff)
+        gr = greedyreduce.NeighborGraph(args)
+        gr.reduce_from_bottom()
+        assert len(gr.nodes) == 50
+        assert gr.neighbors == {}
+        assert gr.neighbor_count == {}
 
+###################################################################################################
+###################################################################################################
+
+class Test_write_results:
+
+    def test_outfile_frombottom(self, tmp_path, random_pairfile_50nodes):
+        resultfile = tmp_path / "outfile.txt"
+        distfile, nodes, pairs, cutoff = random_pairfile_50nodes
+        args = Args(infile=distfile, outfile=resultfile, cutoff=cutoff)
+        gr = greedyreduce.NeighborGraph(args)
+        gr.reduce_from_bottom()
+        gr.write_results(args)
+        outfileset = set()
+        with args.outfile.open() as f:
+            for line in f:
+                name = line.rstrip()
+                outfileset.add(name)
+        assert gr.nodes == outfileset
+
+    def test_outfile_fromtop(self, tmp_path, random_pairfile_50nodes):
+        resultfile = tmp_path / "outfile.txt"
+        distfile, nodes, pairs, cutoff = random_pairfile_50nodes
+        args = Args(infile=distfile, outfile=resultfile, cutoff=cutoff)
+        gr = greedyreduce.NeighborGraph(args)
+        gr.reduce_from_top()
+        gr.write_results(args)
+        outfileset = set()
+        with args.outfile.open() as f:
+            for line in f:
+                name = line.rstrip()
+                outfileset.add(name)
+        assert gr.nodes == outfileset
+
+    def test_stdout_frombottom(self, tmp_path, capsys, random_pairfile_50nodes):
+        resultfile = tmp_path / "outfile.txt"
+        distfile, nodes, pairs, cutoff = random_pairfile_50nodes
+        args = Args(infile=distfile, outfile=resultfile, cutoff=cutoff)
+        gr = greedyreduce.NeighborGraph(args)
+        gr.reduce_from_bottom()
+        gr.write_results(args)
+        outlines = capsys.readouterr().out.split("\n")
+
+        out_orignum = int(outlines[3].split()[-1])
+        out_reducednum = int(outlines[4].split()[-1])
+        out_mindeg = int(outlines[7].split()[-1])
+        out_maxdeg = int(outlines[8].split()[-1])
+        out_avedeg = float(outlines[9].split()[-1])
+        out_avedist = float(outlines[12].split()[-1])
+        out_cutoff = float(outlines[13].split()[-1])
+
+        assert out_orignum == 50
+        assert out_reducednum == len(gr.nodes)
+        assert out_mindeg == gr.origdata["min_degree"]
+        assert out_maxdeg == gr.origdata["max_degree"]
+        assert out_avedeg == pytest.approx(gr.origdata["average_degree"], abs=0.01)
+        assert out_avedist == pytest.approx(gr.origdata["average_dist"], abs=0.01)
+        assert out_cutoff == pytest.approx(cutoff, abs=0.01)
+
+    def test_stdout_fromtop(self, tmp_path, capsys, random_pairfile_50nodes):
+        resultfile = tmp_path / "outfile.txt"
+        distfile, nodes, pairs, cutoff = random_pairfile_50nodes
+        args = Args(infile=distfile, outfile=resultfile, cutoff=cutoff)
+        gr = greedyreduce.NeighborGraph(args)
+        gr.reduce_from_top()
+        gr.write_results(args)
+        outlines = capsys.readouterr().out.split("\n")
+
+        out_orignum = int(outlines[3].split()[-1])
+        out_reducednum = int(outlines[4].split()[-1])
+        out_mindeg = int(outlines[7].split()[-1])
+        out_maxdeg = int(outlines[8].split()[-1])
+        out_avedeg = float(outlines[9].split()[-1])
+        out_avedist = float(outlines[12].split()[-1])
+        out_cutoff = float(outlines[13].split()[-1])
+
+        assert out_orignum == 50
+        assert out_reducednum == len(gr.nodes)
+        assert out_mindeg == gr.origdata["min_degree"]
+        assert out_maxdeg == gr.origdata["max_degree"]
+        assert out_avedeg == pytest.approx(gr.origdata["average_degree"], abs=0.01)
+        assert out_avedist == pytest.approx(gr.origdata["average_dist"], abs=0.01)
+        assert out_cutoff == pytest.approx(cutoff, abs=0.01)
+
+###################################################################################################
+###################################################################################################
 
