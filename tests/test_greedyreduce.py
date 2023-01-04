@@ -305,6 +305,26 @@ class Test_reduce_from_top:
         assert gr.neighbors == {}
         assert gr.neighbor_count == {}
 
+    def test_example_known_graph_3(self, graph_example_03):
+        distfile, nodes, pairs, cutoff = graph_example_03
+        args = Args(infile=distfile, cutoff=cutoff)
+        gr = greedyreduce.NeighborGraph(args)
+        gr.reduce_from_top()
+        assert len(gr.nodes) == 4
+        n1 = "n1" in gr.nodes; n2 = "n2" in gr.nodes; n3 = "n3" in gr.nodes; n4 = "n4" in gr.nodes
+        n5 = "n5" in gr.nodes; n6 = "n6" in gr.nodes; n7 = "n7" in gr.nodes; n8 = "n8" in gr.nodes;
+        n9 = "n9" in gr.nodes; n10 = "n10" in gr.nodes
+        assert not n1
+        assert n10
+        assert sum([n2, n3, n6]) == 1  # Only one of them present
+        assert (
+                (n7 and (n4 or n9))
+             or (n9 and (n7 or n8))
+             or ((n4 or n9) and (n5 or n7))
+        )
+        assert gr.neighbors == {}
+        assert gr.neighbor_count == {}
+
     def test_random_graph_unknown_result(self, random_pairfile_50nodes):
         distfile, nodes, pairs, cutoff = random_pairfile_50nodes
         paired_nodes = {node for tup in pairs for node in tup}
@@ -312,6 +332,64 @@ class Test_reduce_from_top:
         args = Args(infile=distfile, cutoff=cutoff)
         gr = greedyreduce.NeighborGraph(args)
         gr.reduce_from_top()
+        assert gr.neighbors == {}
+        assert gr.neighbor_count == {}
+        for node in unpaired_nodes:
+            assert node in gr.nodes
+
+
+###################################################################################################
+###################################################################################################
+
+class Test_reduce_from_bottom:
+
+    def test_example_known_graph_1(self, graph_example_01):
+        distfile, nodes, pairs, cutoff = graph_example_01
+        args = Args(infile=distfile, cutoff=cutoff)
+        gr = greedyreduce.NeighborGraph(args)
+        gr.reduce_from_bottom()
+        assert gr.nodes == {"n1", "n5", "n6", "n7"}
+        assert gr.neighbors == {}
+        assert gr.neighbor_count == {}
+
+    def test_example_known_graph_2(self, graph_example_02):
+        distfile, nodes, pairs, cutoff = graph_example_02
+        args = Args(infile=distfile, cutoff=cutoff)
+        gr = greedyreduce.NeighborGraph(args)
+        gr.reduce_from_bottom()
+        n1 = "n1" in gr.nodes; n2 = "n2" in gr.nodes; n3 = "n3" in gr.nodes; n4 = "n4" in gr.nodes
+        n5 = "n5" in gr.nodes; n6 = "n6" in gr.nodes; n7 = "n7" in gr.nodes;
+        assert n1
+        assert sum([n5, n6, n7]) == 1  # Only one of them present
+        assert not any([n2, n3, n4])
+        assert gr.neighbors == {}
+        assert gr.neighbor_count == {}
+
+    def test_example_known_graph_3(self, graph_example_03):
+        distfile, nodes, pairs, cutoff = graph_example_03
+        args = Args(infile=distfile, cutoff=cutoff)
+        gr = greedyreduce.NeighborGraph(args)
+        gr.reduce_from_bottom()
+        assert len(gr.nodes) == 4
+        n1 = "n1" in gr.nodes; n2 = "n2" in gr.nodes; n3 = "n3" in gr.nodes; n4 = "n4" in gr.nodes
+        n5 = "n5" in gr.nodes; n6 = "n6" in gr.nodes; n7 = "n7" in gr.nodes; n8 = "n8" in gr.nodes;
+        n9 = "n9" in gr.nodes; n10 = "n10" in gr.nodes
+        assert n9
+        assert n10
+        assert not n1
+        assert not n4
+        assert sum([n2, n3, n6]) == 1  # Only one of them present
+        assert sum([n5, n7, n8]) == 1  # Only one of them present
+        assert gr.neighbors == {}
+        assert gr.neighbor_count == {}
+
+    def test_random_graph_unknown_result(self, random_pairfile_50nodes):
+        distfile, nodes, pairs, cutoff = random_pairfile_50nodes
+        paired_nodes = {node for tup in pairs for node in tup}
+        unpaired_nodes = nodes - paired_nodes
+        args = Args(infile=distfile, cutoff=cutoff)
+        gr = greedyreduce.NeighborGraph(args)
+        gr.reduce_from_bottom()
         assert gr.neighbors == {}
         assert gr.neighbor_count == {}
         for node in unpaired_nodes:
