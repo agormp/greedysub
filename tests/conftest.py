@@ -53,9 +53,7 @@ def random_pairfile_no_neighbors_50nodes(tmp_path):
 @pytest.fixture()
 def graph_example_01(tmp_path):
     nodes = {"n1", "n2", "n3", "n4", "n5", "n6", "n7"}
-    pairs = {("n1", "n2"),
-             ("n1", "n3"),
-             ("n1", "n4"),
+    pairs = {("n1", "n2"), ("n1", "n3"), ("n1", "n4"),
              ("n2", "n5"),
              ("n3", "n6"),
              ("n4", "n7")}
@@ -76,6 +74,24 @@ def graph_example_02(tmp_path):
              ("n4", "n5"), ("n4", "n6"), ("n4", "n7"),
              ("n5", "n6"), ("n5", "n7"),
              ("n6", "n7")}
+    cutoff = 5
+    distfile = tmp_path / "distfile.txt"
+    distfile.write_text(pairfile_string(nodes, pairs, cutoff))
+    return distfile, nodes, pairs, cutoff
+
+############################################################################################
+
+# Graph guaranteed to fail for reduce_from_bottom
+@pytest.fixture()
+def graph_example_03(tmp_path):
+    nodes = {"n1", "n2", "n3", "n4", "n5", "n6", "n7", "n8", "n9", "n10"}
+    pairs = {("n1", "n2"), ("n1", "n3"), ("n1", "n4"), ("n1", "n5"), ("n1", "n6"), ("n1", "n10"),
+             ("n2", "n3"), ("n2", "n6"),
+             ("n3", "n6"),
+             ("n4", "n8"), ("n4", "n9"),
+             ("n5", "n7"), ("n5", "n8"),
+             ("n5", "n7"), ("n5", "n8"),
+             ("n7", "n8")}
     cutoff = 5
     distfile = tmp_path / "distfile.txt"
     distfile.write_text(pairfile_string(nodes, pairs, cutoff))
