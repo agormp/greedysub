@@ -2,20 +2,23 @@
 import argparse, sys, itertools
 from collections import defaultdict
 from operator import itemgetter
+from pathlib import Path
 
 ################################################################################################
 
-def main():
-    parser = build_parser()
-    args = parse_commandline(parser)
+# Python note: "commandlist" is to enable unit testing of argparse code
+# https://jugmac00.github.io/blog/testing-argparse-applications-the-better-way/
+
+def main(commandlist=None):
+    args = parse_commandline(commandlist)
     graph = NeighborGraph(args)
 
     # If input has no neighbors: do nothing, print results. Otherwise: proceed
-    if graph.max_degree > 0:
+    if graph.origdata["max_degree"] > 0:
         if args.keepfile:
             graph.remove_keepfile_neighbors()
 
-        if args.frombottom:
+        if args.algorithm == "min":
             graph.reduce_from_bottom()
         else:
             graph.reduce_from_top()
@@ -24,59 +27,50 @@ def main():
 
 ################################################################################################
 
-def build_parser():
-    parser = argparse.ArgumentParser(description = "Selects subset of items based on" +
-                                    " list of pairwise similarities (or distances), such that no" +
-                                    " retained items are close neighbors")
+# Python note: "commandlist" is to enable unit testing of argparse code
+# Will be "None" when run in script mode, and argparse will then automatically take values from sys.argv[1:]
 
-    parser.add_argument("infile", metavar='INFILE', default="-",
-                        help="input file containing the similarity (option -s) or distance " +
-                             "(option -d) for each pair of items: name1 name2 value")
-
-    parser.add_argument("outfile", metavar='OUTFILE', default="-",
-                        help="output file contatining reduced subset of names (one name per line).")
-
-    distsimgroup = parser.add_mutually_exclusive_group()
-    distsimgroup.add_argument('-s', action='store_true', dest="values_are_sim",
-                              help="values in INFILE are similarities " +
-                                    "(larger values = more similar)")
-    distsimgroup.add_argument('-d', action='store_true', dest="values_are_dist",
-                              help="values in INFILE are distances " +
-                                    "(smaller values = more similar)")
-
-    algorithmgroup = parser.add_mutually_exclusive_group()
-    algorithmgroup.add_argument('-b', "--frombottom", action='store_true',
-                              help="iteratively remove neighbors of least connected node, until no neighbors left")
-    algorithmgroup.add_argument('-t', "--fromtop", action='store_true',
-                              help="iteratively remove most connected node, until no neighbors left")
-
-    parser.add_argument("-c",  action="store", type=float, dest="cutoff", metavar="CUTOFF",
-                          help="cutoff for deciding which pairs are neighbors")
-
-    parser.add_argument("-k", action="store", dest="keepfile", metavar="KEEPFILE",
-                          help="(optional) file with names of items that must be kept (one name per line)")
-    parser.add_argument('--check', action='store_true', dest="check",
-                              help="check validity of input data: Are all pairs listed? "
-                                    + "Are A B distances the same as B A?  "
-                                    + "If yes: finish run and print results. "
-                                    + "If no: abort run with error message")
-
-    return parser
+def parse_commandline(commandlist):
+    parser = build_parser()
+    args = parser.parse_args(commandlist)
+    if args.valuetype is None:
+        parser.error("Must specify whether values in INFILE are distances (--val dist) or similarities (--val sim)")
+    if args.cutoff is None:
+        parser.error("Must provide cutoff (option -c)")
+    return args
 
 ################################################################################################
 
-def parse_commandline(parser):
+def build_parser():
 
-    args = parser.parse_args()
-    if ((args.values_are_sim and args.values_are_dist) or
-       ((not args.values_are_sim ) and (not args.values_are_dist))):
-        parser.error("Must specify either option -s (similarity) or option -d (distance)")
-    if ((args.frombottom and args.fromtop) or
-       ((not args.frombottom ) and (not args.fromtop))):
-        parser.error("Must specify either option -b (from bottom) or option -t (from top)")
-    if args.cutoff is None:
-        parser.error("Must provide cutoff (option -c)")
-    return(args)
+    parser = argparse.ArgumentParser(description = "Selects subset of items, based on" +
+                                    " list of pairwise similarities (or distances), such that no" +
+                                    " retained items are close neighbors")
+
+    parser.add_argument("infile", metavar='INFILE', type=Path,
+                        help="input file containing similarity or distance " +
+                             "for each pair of items: name1 name2 value")
+
+    parser.add_argument("outfile", metavar='OUTFILE', type=Path,
+                        help="output file contatining reduced subset of items (one name per line)")
+
+    #########################################################################################
+
+    parser.add_argument("--algo", action='store', dest="algorithm", metavar="ALGORITHM",
+                      choices=["min", "max"], default="min",
+                      help="algorithm: %(choices)s [default: %(default)s]")
+
+    parser.add_argument("--val", action='store', dest="valuetype", metavar="VALUETYPE",
+                      choices=["dist", "sim"],
+                      help="specify whether values in INFILE are distances (--val dist) or similarities (--val sim)")
+
+    parser.add_argument("-c",  action="store", type=float, dest="cutoff", metavar="CUTOFF",
+                          help="cutoff value for deciding which pairs are neighbors")
+
+    parser.add_argument("-k", action="store", dest="keepfile", metavar="KEEPFILE", type=Path,
+                          help="(optional) file with names of items that must be kept (one name per line)")
+
+    return parser
 
 ################################################################################################
 ################################################################################################
@@ -101,6 +95,10 @@ class NeighborGraph:
         self.nodes = set()
         cutoff = args.cutoff
         valuesum = 0
+        if args.valuetype == "sim":
+            values_are_sim = True
+        else:
+            values_are_sim = False
         with open(args.infile, "r") as infile:
             for line in infile:
                 name1,name2,value = line.split()
@@ -108,7 +106,7 @@ class NeighborGraph:
                     self.nodes.update([name1,name2])
                     value = float(value)
                     valuesum += value
-                    if args.values_are_sim:
+                    if values_are_sim:
                         if value > cutoff:
                             self.neighbors[name1].add(name2)
                             self.neighbors[name2].add(name1)
@@ -117,7 +115,7 @@ class NeighborGraph:
                             self.neighbors[name1].add(name2)
                             self.neighbors[name2].add(name1)
 
-        # Convert to regular dict to avoid gotchas having to do with key generation on access
+        # Convert to regular dict (not defaultdict) to avoid gotchas with key generation on access
         # Python note: would it be faster to just use dict.setdefault() during creation?
         self.neighbors = dict(self.neighbors)
 
@@ -245,19 +243,22 @@ class NeighborGraph:
     def write_results(self, args):
         """Write results to outfile, and extra info to stdout"""
 
-        print("\n\tNames in reduced set written to {}\n".format(args.outfile))
+        print(f"\n\tNames in reduced set written to {args.outfile}\n")
 
-        print("\tNumber in original set: {:>10,}".format(self.origdata["orignum"]))
-        print("\tNumber in reduced set: {:>11,}\n".format(len(self.nodes)))
+        print(f"\tNumber in original set: {self.origdata['orignum']:>10,}")
+        print(f"\tNumber in reduced set: {len(self.nodes):>11,}\n")
 
         print("\tNode degree original set:")
-        print("\t    min: {:>7,}".format(self.origdata["min_degree"]))
-        print("\t    max: {:>7,}".format(self.origdata["max_degree"]))
-        print("\t    ave: {:>10,.2f}\n".format(self.origdata["average_degree"]))
+        print(f"\t    min: {self.origdata['min_degree']:>7,}")
+        print(f"\t    max: {self.origdata['max_degree']:>7,}")
+        print(f"\t    ave: {self.origdata['average_degree']:>10,.2f}\n")
 
-        print("\tNode distances original set:")
-        print("\t    ave: {:>10,.2f}".format(self.origdata["average_dist"]))
-        print("\t    cutoff: {:>7,.2f}\n".format(args.cutoff))
+        if args.valuetype == "sim":
+            print("\tNode similarities original set:")
+        else:
+            print("\tNode distances original set:")
+        print(f"\t    ave: {self.origdata['average_dist']:>10,.2f}")
+        print(f"\t    cutoff: {args.cutoff:>7,.2f}\n")
 
         with open(args.outfile, "w") as outfile:
             for name in self.nodes:
