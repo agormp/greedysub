@@ -3,18 +3,50 @@ import greedyreduce
 import itertools
 import collections
 import copy
+from pathlib import Path
 
 ###################################################################################################
 ###################################################################################################
 
-class Args:
-    """Used to mock args object normally returned from argparser"""
-    def __init__(self, infile, outfile=None, values_are_sim=False, cutoff=5, keepfile=None):
-        self.cutoff = cutoff
-        self.infile = infile
-        self.outfile = outfile
-        self.values_are_sim = values_are_sim
-        self.keepfile = keepfile
+class Test_parse_commandline:
+
+    def test_min_dist_keepfile_correct(self):
+        commandlist = "--algo min --val dist -c 10 -k keepfile.txt infile.txt outfile.txt".split()
+        args = greedyreduce.parse_commandline(commandlist)
+        assert args.algorithm == "min"
+        assert args.valuetype == "dist"
+        assert args.cutoff == 10.0
+        assert args.infile == Path("infile.txt")
+        assert args.outfile == Path("outfile.txt")
+        assert args.keepfile == Path("keepfile.txt")
+
+    def test_max_sim_nokeepfile_correct(self):
+        commandlist = "--algo max --val sim -c 10 infile.txt outfile.txt".split()
+        args = greedyreduce.parse_commandline(commandlist)
+        assert args.algorithm == "max"
+        assert args.valuetype == "sim"
+        assert args.cutoff == 10.0
+        assert args.infile == Path("infile.txt")
+        assert args.outfile == Path("outfile.txt")
+        assert args.keepfile == None
+
+    def test_no_valuetype(self, capsys):
+        commandlist = "--algo min -c 10 infile.txt outfile.txt".split()
+        with pytest.raises(SystemExit, match="2"):
+            args = greedyreduce.parse_commandline(commandlist)
+        assert "Must specify whether values in INFILE are distances" in capsys.readouterr().err
+
+    def test_wrong_algo_choice(self, capsys):
+        commandlist = "--algo notoption --val dist -c 10 infile.txt outfile.txt".split()
+        with pytest.raises(SystemExit, match="2"):
+            args = greedyreduce.parse_commandline(commandlist)
+        assert "invalid choice" in capsys.readouterr().err
+
+    def test_no_cutoff(self, capsys):
+        commandlist = "--algo min --val dist infile.txt outfile.txt".split()
+        with pytest.raises(SystemExit, match="2"):
+            args = greedyreduce.parse_commandline(commandlist)
+        assert "Must provide cutoff" in capsys.readouterr().err
 
 ###################################################################################################
 ###################################################################################################
@@ -23,7 +55,35 @@ class Test_init:
 
     def test_example_with_neighbors(self, random_pairfile_50nodes):
         distfile, nodes, pairs, cutoff = random_pairfile_50nodes
-        args = Args(infile=distfile, cutoff=cutoff)
+        commandlist = f"--val dist -c {cutoff} {distfile} outfile.txt".split()
+        args = greedyreduce.parse_commandline(commandlist)
+        gr = greedyreduce.NeighborGraph(args)
+        assert gr.nodes == set(nodes)
+        for n1,n2 in itertools.combinations(nodes, 2):
+            if ((n1,n2) in pairs) or ((n2,n1) in pairs):
+                assert n2 in gr.neighbors[n1]
+                assert n1 in gr.neighbors[n2]
+            else:
+                assert (n1 not in gr.neighbors) or (n2 not in gr.neighbors[n1])
+                assert (n2 not in gr.neighbors) or (n1 not in gr.neighbors[n2])
+        nbcountlist = []
+        for node,count in gr.neighbor_count.items():
+            c = 0
+            for pair in pairs:
+                if node in pair:
+                    c += 1
+            nbcountlist.append(c)
+            assert c == count
+        assert gr.origdata["orignum"] == len(nodes)
+        assert gr.origdata["average_degree"]  == sum(nbcountlist) / len(nodes)
+        assert gr.origdata["max_degree"] == max(nbcountlist)
+        assert gr.origdata["min_degree"] == min(nbcountlist)
+        # how to check gr.average_dist from given info???
+
+    def test_example_with_neighbors_sim(self, random_pairfile_50nodes_sim):
+        simfile, nodes, pairs, cutoff = random_pairfile_50nodes_sim
+        commandlist = f"--val sim -c {cutoff} {simfile} outfile.txt".split()
+        args = greedyreduce.parse_commandline(commandlist)
         gr = greedyreduce.NeighborGraph(args)
         assert gr.nodes == set(nodes)
         for n1,n2 in itertools.combinations(nodes, 2):
@@ -49,7 +109,8 @@ class Test_init:
 
     def test_example_without_neighbors(self, random_pairfile_no_neighbors_50nodes):
         distfile, nodes, pairs, cutoff = random_pairfile_no_neighbors_50nodes
-        args = Args(infile=distfile, cutoff=cutoff)
+        commandlist = f"--val dist -c {cutoff} {distfile} outfile.txt".split()
+        args = greedyreduce.parse_commandline(commandlist)
         gr = greedyreduce.NeighborGraph(args)
         assert gr.nodes == set(nodes)
         for node in nodes:
@@ -64,7 +125,8 @@ class Test_init:
     def test_parse_keepset(self, random_pairfile_50nodes, keepfile_n0_to_n9):
         distfile, nodes, pairs, cutoff = random_pairfile_50nodes
         keepfile, keepset = keepfile_n0_to_n9
-        args = Args(infile=distfile, cutoff=cutoff, keepfile=keepfile)
+        commandlist = f"--val dist -c {cutoff} -k {keepfile} {distfile} outfile.txt".split()
+        args = greedyreduce.parse_commandline(commandlist)
         gr = greedyreduce.NeighborGraph(args)
         assert gr.keepset == {'n0', 'n1', 'n2', 'n3', 'n4', 'n5', 'n6', 'n7', 'n8', 'n9'}
 
@@ -75,7 +137,8 @@ class Test_most_neighbors:
 
     def test_example_with_neighbors(self, random_pairfile_50nodes):
         distfile, nodes, pairs, cutoff = random_pairfile_50nodes
-        args = Args(infile=distfile, cutoff=cutoff)
+        commandlist = f"--val dist -c {cutoff} {distfile} outfile.txt".split()
+        args = greedyreduce.parse_commandline(commandlist)
         gr = greedyreduce.NeighborGraph(args)
         node_with_most_nb, max_num_nb = gr.most_neighbors()
         pairnodes = [node for tup in pairs for node in tup]
@@ -86,7 +149,8 @@ class Test_most_neighbors:
 
     def test_example_without_neighbors(self, random_pairfile_no_neighbors_50nodes):
         distfile, nodes, pairs, cutoff = random_pairfile_no_neighbors_50nodes
-        args = Args(infile=distfile, cutoff=cutoff)
+        commandlist = f"--val dist -c {cutoff} {distfile} outfile.txt".split()
+        args = greedyreduce.parse_commandline(commandlist)
         gr = greedyreduce.NeighborGraph(args)
         node_with_most_nb, max_num_nb = gr.most_neighbors()
         assert node_with_most_nb is None
@@ -99,7 +163,8 @@ class Test_fewest_neighbors:
 
     def test_example_with_neighbors(self, random_pairfile_50nodes):
         distfile, nodes, pairs, cutoff = random_pairfile_50nodes
-        args = Args(infile=distfile, cutoff=cutoff)
+        commandlist = f"--val dist -c {cutoff} {distfile} outfile.txt".split()
+        args = greedyreduce.parse_commandline(commandlist)
         gr = greedyreduce.NeighborGraph(args)
         node_with_fewest_nb, min_num_nb = gr.fewest_neighbors()
         pairnodes = [node for tup in pairs for node in tup]
@@ -110,7 +175,8 @@ class Test_fewest_neighbors:
 
     def test_example_without_neighbors(self, random_pairfile_no_neighbors_50nodes):
         distfile, nodes, pairs, cutoff = random_pairfile_no_neighbors_50nodes
-        args = Args(infile=distfile, cutoff=cutoff)
+        commandlist = f"--val dist -c {cutoff} {distfile} outfile.txt".split()
+        args = greedyreduce.parse_commandline(commandlist)
         gr = greedyreduce.NeighborGraph(args)
         node_with_most_nb, max_num_nb = gr.fewest_neighbors()
         assert node_with_most_nb is None
@@ -123,7 +189,8 @@ class Test_remove_node:
 
     def test_example_without_neighbors(self, random_pairfile_no_neighbors_50nodes):
         distfile, nodes, pairs, cutoff = random_pairfile_no_neighbors_50nodes
-        args = Args(infile=distfile, cutoff=cutoff)
+        commandlist = f"--val dist -c {cutoff} {distfile} outfile.txt".split()
+        args = greedyreduce.parse_commandline(commandlist)
         gr = greedyreduce.NeighborGraph(args)
         n1 = nodes.pop()
         gr.remove_node(n1)
@@ -135,7 +202,8 @@ class Test_remove_node:
 
     def test_example_with_neighbors(self, graph_example_01):
         distfile, nodes, pairs, cutoff = graph_example_01
-        args = Args(infile=distfile, cutoff=cutoff)
+        commandlist = f"--val dist -c {cutoff} {distfile} outfile.txt".split()
+        args = greedyreduce.parse_commandline(commandlist)
         gr = greedyreduce.NeighborGraph(args)
         gr.remove_node("n2")
         nodes.remove("n2")
@@ -164,7 +232,8 @@ class Test_remove_connection:
 
     def test_example_without_neighbors(self, random_pairfile_no_neighbors_50nodes):
         distfile, nodes, pairs, cutoff = random_pairfile_no_neighbors_50nodes
-        args = Args(infile=distfile, cutoff=cutoff)
+        commandlist = f"--val dist -c {cutoff} {distfile} outfile.txt".split()
+        args = greedyreduce.parse_commandline(commandlist)
         gr = greedyreduce.NeighborGraph(args)
         n1,n2 = list(nodes)[:2]
         with pytest.raises(Exception, match=r"These nodes are not neighbors.*"):
@@ -172,7 +241,8 @@ class Test_remove_connection:
 
     def test_example_with_neighbors(self, random_pairfile_50nodes):
         distfile, nodes, pairs, cutoff = random_pairfile_50nodes
-        args = Args(infile=distfile, cutoff=cutoff)
+        commandlist = f"--val dist -c {cutoff} {distfile} outfile.txt".split()
+        args = greedyreduce.parse_commandline(commandlist)
         gr = greedyreduce.NeighborGraph(args)
         for n1,n2 in pairs:
             n1countpre = gr.neighbor_count[n1]
@@ -187,7 +257,8 @@ class Test_remove_connection:
 
     def test_example_known_graph(self, graph_example_01):
         distfile, nodes, pairs, cutoff = graph_example_01
-        args = Args(infile=distfile, cutoff=cutoff)
+        commandlist = f"--val dist -c {cutoff} {distfile} outfile.txt".split()
+        args = greedyreduce.parse_commandline(commandlist)
         gr = greedyreduce.NeighborGraph(args)
         gr.remove_connection("n2","n5")
         gr.remove_connection("n1","n4")
@@ -208,7 +279,8 @@ class Test_remove_neighbors:
 
     def test_example_without_neighbors(self, random_pairfile_no_neighbors_50nodes):
         distfile, nodes, pairs, cutoff = random_pairfile_no_neighbors_50nodes
-        args = Args(infile=distfile, cutoff=cutoff)
+        commandlist = f"--val dist -c {cutoff} {distfile} outfile.txt".split()
+        args = greedyreduce.parse_commandline(commandlist)
         gr = greedyreduce.NeighborGraph(args)
         nbdict_pre = copy.deepcopy(gr.neighbors)
         for node in nodes:
@@ -217,7 +289,8 @@ class Test_remove_neighbors:
 
     def test_example_with_neighbors(self, random_pairfile_50nodes):
         distfile, nodes, pairs, cutoff = random_pairfile_50nodes
-        args = Args(infile=distfile, cutoff=cutoff)
+        commandlist = f"--val dist -c {cutoff} {distfile} outfile.txt".split()
+        args = greedyreduce.parse_commandline(commandlist)
         gr = greedyreduce.NeighborGraph(args)
         nbdict_keys = list(gr.neighbors.keys())  # These nodes have neighbors
         for node in nbdict_keys:
@@ -226,7 +299,8 @@ class Test_remove_neighbors:
 
     def test_example_known_graph_1(self, graph_example_01):
         distfile, nodes, pairs, cutoff = graph_example_01
-        args = Args(infile=distfile, cutoff=cutoff)
+        commandlist = f"--val dist -c {cutoff} {distfile} outfile.txt".split()
+        args = greedyreduce.parse_commandline(commandlist)
         gr = greedyreduce.NeighborGraph(args)
         gr.remove_neighbors("n1")
         assert gr.nodes == {"n1", "n5", "n6", "n7"}
@@ -241,7 +315,8 @@ class Test_remove_keepfile_neighbors:
     def test_example_with_neighbors(self, random_pairfile_50nodes, keepfile_n0_to_n9):
         distfile, nodes, pairs, cutoff = random_pairfile_50nodes
         keepfile, keepset = keepfile_n0_to_n9
-        args = Args(infile=distfile, cutoff=cutoff, keepfile=keepfile)
+        commandlist = f"--val dist -c {cutoff} -k {keepfile} {distfile} outfile.txt".split()
+        args = greedyreduce.parse_commandline(commandlist)
         gr = greedyreduce.NeighborGraph(args)
         expected_removed = set()
         for n1,n2 in pairs:
@@ -259,7 +334,8 @@ class Test_remove_keepfile_neighbors:
                     random_pairfile_no_neighbors_50nodes, keepfile_n0_to_n9):
         distfile, nodes, pairs, cutoff = random_pairfile_no_neighbors_50nodes
         keepfile, keepset = keepfile_n0_to_n9
-        args = Args(infile=distfile, cutoff=cutoff, keepfile=keepfile)
+        commandlist = f"--val dist -c {cutoff} -k {keepfile} {distfile} outfile.txt".split()
+        args = greedyreduce.parse_commandline(commandlist)
         gr = greedyreduce.NeighborGraph(args)
         gr.remove_keepfile_neighbors()
         assert set(nodes) == gr.nodes
@@ -270,7 +346,8 @@ class Test_remove_keepfile_neighbors:
     def test_example_known_graph_1(self, graph_example_01, keepfile_n3_and_n5):
         distfile, nodes, pairs, cutoff = graph_example_01
         keepfile, keepset = keepfile_n3_and_n5
-        args = Args(infile=distfile, cutoff=cutoff, keepfile=keepfile)
+        commandlist = f"--val dist -c {cutoff} -k {keepfile} {distfile} outfile.txt".split()
+        args = greedyreduce.parse_commandline(commandlist)
         gr = greedyreduce.NeighborGraph(args)
         gr.remove_keepfile_neighbors()
         assert gr.nodes == {"n3", "n4", "n5", "n7"}
@@ -286,7 +363,8 @@ class Test_reduce_from_top:
 
     def test_example_known_graph_1(self, graph_example_01):
         distfile, nodes, pairs, cutoff = graph_example_01
-        args = Args(infile=distfile, cutoff=cutoff)
+        commandlist = f"--val dist -c {cutoff} {distfile} outfile.txt".split()
+        args = greedyreduce.parse_commandline(commandlist)
         gr = greedyreduce.NeighborGraph(args)
         gr.reduce_from_top()
         assert len(gr.nodes) == 3
@@ -298,7 +376,8 @@ class Test_reduce_from_top:
 
     def test_example_known_graph_2(self, graph_example_02):
         distfile, nodes, pairs, cutoff = graph_example_02
-        args = Args(infile=distfile, cutoff=cutoff)
+        commandlist = f"--val dist -c {cutoff} {distfile} outfile.txt".split()
+        args = greedyreduce.parse_commandline(commandlist)
         gr = greedyreduce.NeighborGraph(args)
         gr.reduce_from_top()
         assert gr.nodes == {"n2", "n3", "n4"}
@@ -307,7 +386,8 @@ class Test_reduce_from_top:
 
     def test_example_known_graph_3(self, graph_example_03):
         distfile, nodes, pairs, cutoff = graph_example_03
-        args = Args(infile=distfile, cutoff=cutoff)
+        commandlist = f"--val dist -c {cutoff} {distfile} outfile.txt".split()
+        args = greedyreduce.parse_commandline(commandlist)
         gr = greedyreduce.NeighborGraph(args)
         gr.reduce_from_top()
         assert len(gr.nodes) == 4
@@ -329,7 +409,8 @@ class Test_reduce_from_top:
         distfile, nodes, pairs, cutoff = random_pairfile_50nodes
         paired_nodes = {node for tup in pairs for node in tup}
         unpaired_nodes = nodes - paired_nodes
-        args = Args(infile=distfile, cutoff=cutoff)
+        commandlist = f"--val dist -c {cutoff} {distfile} outfile.txt".split()
+        args = greedyreduce.parse_commandline(commandlist)
         gr = greedyreduce.NeighborGraph(args)
         gr.reduce_from_top()
         assert gr.neighbors == {}
@@ -339,7 +420,8 @@ class Test_reduce_from_top:
 
     def test_example_without_neighbors(self, random_pairfile_no_neighbors_50nodes):
         distfile, nodes, pairs, cutoff = random_pairfile_no_neighbors_50nodes
-        args = Args(infile=distfile, cutoff=cutoff)
+        commandlist = f"--val dist -c {cutoff} {distfile} outfile.txt".split()
+        args = greedyreduce.parse_commandline(commandlist)
         gr = greedyreduce.NeighborGraph(args)
         gr.reduce_from_top()
         assert len(gr.nodes) == 50
@@ -353,7 +435,8 @@ class Test_reduce_from_bottom:
 
     def test_example_known_graph_1(self, graph_example_01):
         distfile, nodes, pairs, cutoff = graph_example_01
-        args = Args(infile=distfile, cutoff=cutoff)
+        commandlist = f"--val dist -c {cutoff} {distfile} outfile.txt".split()
+        args = greedyreduce.parse_commandline(commandlist)
         gr = greedyreduce.NeighborGraph(args)
         gr.reduce_from_bottom()
         assert gr.nodes == {"n1", "n5", "n6", "n7"}
@@ -362,7 +445,8 @@ class Test_reduce_from_bottom:
 
     def test_example_known_graph_2(self, graph_example_02):
         distfile, nodes, pairs, cutoff = graph_example_02
-        args = Args(infile=distfile, cutoff=cutoff)
+        commandlist = f"--val dist -c {cutoff} {distfile} outfile.txt".split()
+        args = greedyreduce.parse_commandline(commandlist)
         gr = greedyreduce.NeighborGraph(args)
         gr.reduce_from_bottom()
         n1 = "n1" in gr.nodes; n2 = "n2" in gr.nodes; n3 = "n3" in gr.nodes; n4 = "n4" in gr.nodes
@@ -375,7 +459,8 @@ class Test_reduce_from_bottom:
 
     def test_example_known_graph_3(self, graph_example_03):
         distfile, nodes, pairs, cutoff = graph_example_03
-        args = Args(infile=distfile, cutoff=cutoff)
+        commandlist = f"--val dist -c {cutoff} {distfile} outfile.txt".split()
+        args = greedyreduce.parse_commandline(commandlist)
         gr = greedyreduce.NeighborGraph(args)
         gr.reduce_from_bottom()
         assert len(gr.nodes) == 4
@@ -395,7 +480,8 @@ class Test_reduce_from_bottom:
         distfile, nodes, pairs, cutoff = random_pairfile_50nodes
         paired_nodes = {node for tup in pairs for node in tup}
         unpaired_nodes = nodes - paired_nodes
-        args = Args(infile=distfile, cutoff=cutoff)
+        commandlist = f"--val dist -c {cutoff} {distfile} outfile.txt".split()
+        args = greedyreduce.parse_commandline(commandlist)
         gr = greedyreduce.NeighborGraph(args)
         gr.reduce_from_bottom()
         assert gr.neighbors == {}
@@ -405,7 +491,8 @@ class Test_reduce_from_bottom:
 
     def test_example_without_neighbors(self, random_pairfile_no_neighbors_50nodes):
         distfile, nodes, pairs, cutoff = random_pairfile_no_neighbors_50nodes
-        args = Args(infile=distfile, cutoff=cutoff)
+        commandlist = f"--val dist -c {cutoff} {distfile} outfile.txt".split()
+        args = greedyreduce.parse_commandline(commandlist)
         gr = greedyreduce.NeighborGraph(args)
         gr.reduce_from_bottom()
         assert len(gr.nodes) == 50
@@ -420,7 +507,8 @@ class Test_write_results:
     def test_outfile_frombottom(self, tmp_path, random_pairfile_50nodes):
         resultfile = tmp_path / "outfile.txt"
         distfile, nodes, pairs, cutoff = random_pairfile_50nodes
-        args = Args(infile=distfile, outfile=resultfile, cutoff=cutoff)
+        commandlist = f"--val dist -c {cutoff} {distfile} {resultfile}".split()
+        args = greedyreduce.parse_commandline(commandlist)
         gr = greedyreduce.NeighborGraph(args)
         gr.reduce_from_bottom()
         gr.write_results(args)
@@ -434,7 +522,8 @@ class Test_write_results:
     def test_outfile_fromtop(self, tmp_path, random_pairfile_50nodes):
         resultfile = tmp_path / "outfile.txt"
         distfile, nodes, pairs, cutoff = random_pairfile_50nodes
-        args = Args(infile=distfile, outfile=resultfile, cutoff=cutoff)
+        commandlist = f"--val dist -c {cutoff} {distfile} {resultfile}".split()
+        args = greedyreduce.parse_commandline(commandlist)
         gr = greedyreduce.NeighborGraph(args)
         gr.reduce_from_top()
         gr.write_results(args)
@@ -448,7 +537,8 @@ class Test_write_results:
     def test_stdout_frombottom(self, tmp_path, capsys, random_pairfile_50nodes):
         resultfile = tmp_path / "outfile.txt"
         distfile, nodes, pairs, cutoff = random_pairfile_50nodes
-        args = Args(infile=distfile, outfile=resultfile, cutoff=cutoff)
+        commandlist = f"--val dist -c {cutoff} {distfile} {resultfile}".split()
+        args = greedyreduce.parse_commandline(commandlist)
         gr = greedyreduce.NeighborGraph(args)
         gr.reduce_from_bottom()
         gr.write_results(args)
@@ -473,7 +563,8 @@ class Test_write_results:
     def test_stdout_fromtop(self, tmp_path, capsys, random_pairfile_50nodes):
         resultfile = tmp_path / "outfile.txt"
         distfile, nodes, pairs, cutoff = random_pairfile_50nodes
-        args = Args(infile=distfile, outfile=resultfile, cutoff=cutoff)
+        commandlist = f"--val dist -c {cutoff} {distfile} {resultfile}".split()
+        args = greedyreduce.parse_commandline(commandlist)
         gr = greedyreduce.NeighborGraph(args)
         gr.reduce_from_top()
         gr.write_results(args)
@@ -497,4 +588,113 @@ class Test_write_results:
 
 ###################################################################################################
 ###################################################################################################
+
+class Test_main:
+
+    # Essentially an integration test
+
+    def test_example_known_graph_2_max(self, tmp_path, graph_example_02, capsys):
+        resultfile = tmp_path / "outfile.txt"
+        distfile, nodes, pairs, cutoff = graph_example_02
+        commandlist = f"--algo max --val dist -c {cutoff} {distfile} {resultfile}".split()
+        greedyreduce.main(commandlist)
+        outfileset = set()
+        with resultfile.open() as f:
+            for line in f:
+                name = line.rstrip()
+                outfileset.add(name)
+        assert outfileset == {"n2", "n3", "n4"}
+
+        outlines = capsys.readouterr().out.split("\n")
+
+        out_orignum = int(outlines[3].split()[-1])
+        out_reducednum = int(outlines[4].split()[-1])
+        out_mindeg = int(outlines[7].split()[-1])
+        out_maxdeg = int(outlines[8].split()[-1])
+        out_avedeg = float(outlines[9].split()[-1])
+        out_avedist = float(outlines[12].split()[-1])
+        out_cutoff = float(outlines[13].split()[-1])
+
+        assert out_orignum == 7
+        assert out_reducednum == 3
+        assert out_mindeg == 3
+        assert out_maxdeg == 5
+        assert out_avedeg == pytest.approx(30/7, abs=0.01)
+        exp_avedist = (15 * 2.5 + 6 * 10) / 21
+        assert out_avedist == pytest.approx(exp_avedist, abs=0.01)
+        assert out_cutoff == 5
+
+    def test_example_known_graph_2_min(self, tmp_path, graph_example_02, capsys):
+        resultfile = tmp_path / "outfile.txt"
+        distfile, nodes, pairs, cutoff = graph_example_02
+        commandlist = f"--algo min --val dist -c {cutoff} {distfile} {resultfile}".split()
+        greedyreduce.main(commandlist)
+        outfileset = set()
+        with resultfile.open() as f:
+            for line in f:
+                name = line.rstrip()
+                outfileset.add(name)
+        n1 = "n1" in outfileset; n2 = "n2" in outfileset; n3 = "n3" in outfileset; n4 = "n4" in outfileset
+        n5 = "n5" in outfileset; n6 = "n6" in outfileset; n7 = "n7" in outfileset;
+        assert n1
+        assert sum([n5, n6, n7]) == 1  # Only one of them present
+        assert not any([n2, n3, n4])
+
+        outlines = capsys.readouterr().out.split("\n")
+
+        out_orignum = int(outlines[3].split()[-1])
+        out_reducednum = int(outlines[4].split()[-1])
+        out_mindeg = int(outlines[7].split()[-1])
+        out_maxdeg = int(outlines[8].split()[-1])
+        out_avedeg = float(outlines[9].split()[-1])
+        out_avedist = float(outlines[12].split()[-1])
+        out_cutoff = float(outlines[13].split()[-1])
+
+        assert out_orignum == 7
+        assert out_reducednum == 2
+        assert out_mindeg == 3
+        assert out_maxdeg == 5
+        assert out_avedeg == pytest.approx(30/7, abs=0.01)
+        exp_avedist = (15 * 2.5 + 6 * 10) / 21
+        assert out_avedist == pytest.approx(exp_avedist, abs=0.01)
+        assert out_cutoff == 5
+
+
+    def test_example_known_graph_1_keepfile(self, graph_example_01, keepfile_n3_and_n5, tmp_path, capsys):
+        resultfile = tmp_path / "outfile.txt"
+        distfile, nodes, pairs, cutoff = graph_example_01
+        keepfile, keepset = keepfile_n3_and_n5
+        commandlist = f"--algo min --val dist -c {cutoff} -k {keepfile} {distfile} {resultfile}".split()
+        greedyreduce.main(commandlist)
+
+        outfileset = set()
+        with resultfile.open() as f:
+            for line in f:
+                name = line.rstrip()
+                outfileset.add(name)
+
+        assert "n3" in outfileset
+        assert "n5" in outfileset
+        assert sum(["n4" in outfileset, "n7" in outfileset]) == 1
+
+        outlines = capsys.readouterr().out.split("\n")
+
+        out_orignum = int(outlines[3].split()[-1])
+        out_reducednum = int(outlines[4].split()[-1])
+        out_mindeg = int(outlines[7].split()[-1])
+        out_maxdeg = int(outlines[8].split()[-1])
+        out_avedeg = float(outlines[9].split()[-1])
+        out_avedist = float(outlines[12].split()[-1])
+        out_cutoff = float(outlines[13].split()[-1])
+
+        assert out_orignum == 7
+        assert out_reducednum == 3
+        assert out_mindeg == 1
+        assert out_maxdeg == 3
+        assert out_avedeg == pytest.approx(12/7, abs=0.01)
+        exp_avedist = (6 * 2.5 + 15 * 10) / 21
+        assert out_avedist == pytest.approx(exp_avedist, abs=0.01)
+        assert out_cutoff == 5
+
+
 
