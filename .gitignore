@@ -3,3 +3,4 @@ tests/hobohm_randdata.py
 tests/.ipynb_checkpoints/
 tests/__pycache__/
 __pycache__/
+.DS_Store
