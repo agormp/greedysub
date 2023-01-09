@@ -26,6 +26,25 @@ python3 -m pip install --upgrade greedysub
 
 There are no dependencies.
 
+## Quick-start
+
+To find a subset of sequences, where no two sequences are more than 85% identical, using the "greedy-min" algorithm:
+
+```
+greedysub --algo min --val sim -c 0.85 simfile.txt resultfile.txt
+```
+
+Here, `simfile.txt` is a textfile where each line lists the names of two sequences and their pairwise similarity (as a number in [0, 1]):
+
+```
+yfg1  yfg2  0.98
+yfg1  klp2  0.67
+yfg1  mcf9  0.87
+...
+```
+
+The file `resultfile.txt` contains a list of names (one name per line) of sequences that should be retained. Basic information about the original and reduced data sets will be printed to stdout. See below for more details and further options. 
+
 ## Overview
 
 The main purpose of the `greedysub` program is to select a non-redundant subset of DNA- or protein-sequences, i.e., a subset where the pairwise sequence identity is below a given threshold. However, the program can be used to find representative subsets for any other type of items, for which pairwise similarities (or distances) are known. The subset is found using a [greedy](https://en.wikipedia.org/wiki/Greedy_algorithm) algorithm (hence the name).
@@ -49,27 +68,13 @@ Output:
 
 Reducing sequence redundancy is useful, e.g., when using cross-validation for estimating the performance of machine learning methods, such as neural networks, in order to avoid spuriously high performance estimates: if similar items (sequences) are present in training and test sets respectively, then the method will appear to be good at generalisation, when it may just have been overtrained on the items (sequences) in the training set. 
 
-The program implements two related greedy heuristics for solving the problem: "max" and "min". On average the "min" algorithm will be best (giving the largest subset). See section "Theory" for details on the algorithms, and for comments on the non-optimality of the heuristics for this problem.
-
-## Theory
-
-### Equivalence to "maximum independent set problem" and other problems
-
-Finding the largest subset of non-neighboring items from a list of pairwise similarities (or distances) is equivalent to the following problems:
-
-* ["Maximum independent set problem"](https://en.wikipedia.org/wiki/Independent_set_(graph_theory)) from graph-theory: find the largest set of nodes on a graph, such that none of the nodes are adjacent.
-* ["Maximum clique problem"](https://en.wikipedia.org/wiki/Clique_problem#Finding_maximum_cliques_in_arbitrary_graphs): if a set of nodes constute a maximum independent set, then the same nodes form a maximum [clique](https://en.wikipedia.org/wiki/Clique_(graph_theory)) on the [complement graph](https://en.wikipedia.org/wiki/Complement_graph).
-* ["Minimum vertex cover problem"](https://en.wikipedia.org/wiki/Vertex_cover): a minimum vertex cover is the smallest set of nodes that include an endpoint of all edges of the graph. This is the complement of a maximum independent set.
-
-### Computational intractibility of problem
-
-This problem is ![strongly NP-complete](https://en.wikipedia.org/wiki/Strong_NP-completeness) 
+The program implements two related greedy heuristics for solving the problem: "greedy-max" and "greedy-min". On average the "min" algorithm will be best (giving the largest subset). See section "Theory" for details on the algorithms, and for comments on the non-optimality of the heuristics for this problem.
 
 
+## Usage
 
-## Overview
+### Input
 
-### Input:
 
 #### Option -s: pairwise similarities
 
@@ -98,6 +103,23 @@ name1 name3 distance
 ### Output:
 
 A list of names of items that should be kept in the representative subset, written to stdout. This set contains no pairs of items that are more similar (less distant) than the cutoff. The algorithm aims at making the set the maximal possible size. This can occassionally fail if there are multiple items with the same number of "neighbors" and the order of removal of items has an impact.
+
+## Theory
+
+### Equivalence to "maximum independent set problem" and other problems
+
+Finding the largest subset of non-neighboring items from a list of pairwise similarities (or distances) is equivalent to the following problems:
+
+* ["Maximum independent set problem"](https://en.wikipedia.org/wiki/Independent_set_(graph_theory)) from graph-theory: find the largest set of nodes on a graph, such that none of the nodes are adjacent.
+* ["Maximum clique problem"](https://en.wikipedia.org/wiki/Clique_problem#Finding_maximum_cliques_in_arbitrary_graphs): if a set of nodes constitute a maximum independent set, then the same nodes form a maximum [clique](https://en.wikipedia.org/wiki/Clique_(graph_theory)) on the [complement graph](https://en.wikipedia.org/wiki/Complement_graph).
+* ["Minimum vertex cover problem"](https://en.wikipedia.org/wiki/Vertex_cover): a minimum vertex cover is the smallest set of nodes that include an endpoint of all edges of the graph. This is the complement of a maximum independent set.
+
+### Computational intractibility of problem
+
+This problem is [strongly NP-hard](https://en.wikipedia.org/wiki/Strong_NP-completeness) and
+[hard to approximate](https://projecteuclid.org/journals/acta-mathematica/volume-182/issue-1/Clique-is-hard-to-approximate-within-n1ε/10.1007/BF02392825.full).  
+
+
 
 ### Checking validity of input data
 
