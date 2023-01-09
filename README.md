@@ -48,21 +48,25 @@ The file `resultfile.txt` contains a list of names (one name per line) of sequen
 ## Usage
 
 ```
-usage: greedysub.py [-h] [--algo ALGORITHM] [--val VALUETYPE] [-c CUTOFF] [-k KEEPFILE] INFILE OUTFILE
+usage: greedysub.py [-h] [--algo ALGORITHM] [--val VALUETYPE] [-c CUTOFF] [-k KEEPFILE]
+                    INFILE OUTFILE
 
-Selects subset of items, based on list of pairwise similarities (or distances), such that no retained items
-are close neighbors
+Selects subset of items, based on list of pairwise similarities (or distances), such that
+no retained items are close neighbors
 
 positional arguments:
-  INFILE            input file containing similarity or distance for each pair of items: name1 name2 value
+  INFILE            input file containing similarity or distance for each pair of items:
+                    name1 name2 value
   OUTFILE           output file contatining reduced subset of items (one name per line)
 
 options:
   -h, --help        show this help message and exit
   --algo ALGORITHM  algorithm: min, max [default: min]
-  --val VALUETYPE   specify whether values in INFILE are distances (--val dist) or similarities (--val sim)
+  --val VALUETYPE   specify whether values in INFILE are distances (--val dist) or
+                    similarities (--val sim)
   -c CUTOFF         cutoff value for deciding which pairs are neighbors
-  -k KEEPFILE       (optional) file with names of items that must be kept (one name per line)
+  -k KEEPFILE       (optional) file with names of items that must be kept (one name per
+                    line)
 ```
 
 ## Overview
