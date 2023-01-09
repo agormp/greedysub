@@ -68,6 +68,16 @@ klp2
 ...
 ```
 
+### Keep file
+
+The user can specify a list of names for items that must be retained in the subset under all circumstances (also even some of them are neighbors). This KEEPFILE should be a text file listing one name to be retained per line
+
+```
+abc1
+def3
+...
+```
+
 ### Usage examples
 
 #### Select items such that max pairwise similarity is 0.75, using "greedy-min" algorithm
@@ -76,16 +86,16 @@ klp2
 greedysub --algo min --val sim -c 0.75 simfile.txt resultfile.txt
 ```
 
-####Select items such that minimum pairwise distance is 10, using "greedy-max" algorithm
+#### Select items such that minimum pairwise distance is 10, using "greedy-min" algorithm
 
 ```
-greedysub --algo max --val dist -c 10 distfile.txt resultfile.txt
+greedysub --algo min --val dist -c 10 distfile.txt resultfile.txt
 ```
 
-#### Select items such that max pairwise similarity is 0.3, while keeping items in keeplist.txt
+#### Select items with max pairwise similarity 3, while keeping items in keeplist.txt
 
 ```
-greedysub --algo min --val sim -c 3 -k keeplist.txt simfile.txt resultfile.txt
+greedysub --algo max --val sim -c 3 -k keeplist.txt simfile.txt resultfile.txt
 ```
 
 ### Summary info written to stdout
