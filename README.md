@@ -34,7 +34,8 @@ no retained items are close neighbors
 positional arguments:
   INFILE            input file containing similarity or distance for each pair of items:
                     name1 name2 value
-  OUTFILE           output file contatining reduced subset of items (one name per line)
+  OUTFILE           output file contatining neighborless subset of items (one name per
+                    line)
 
 options:
   -h, --help        show this help message and exit
@@ -69,25 +70,25 @@ klp2
 
 ### Usage examples
 
-### Select items such that max pairwise similarity is 0.75, using "greedy-min" algorithm
+#### Select items such that max pairwise similarity is 0.75, using "greedy-min" algorithm
 
 ```
 greedysub --algo min --val sim -c 0.75 simfile.txt resultfile.txt
 ```
 
-### Select items such that minimum pairwise distance is 10, using "greedy-max" algorithm
+####Select items such that minimum pairwise distance is 10, using "greedy-max" algorithm
 
 ```
 greedysub --algo max --val dist -c 10 distfile.txt resultfile.txt
 ```
 
-### Select items such that max pairwise similarity is 0.3, while keeping items in keeplist.txt
+#### Select items such that max pairwise similarity is 0.3, while keeping items in keeplist.txt
 
 ```
 greedysub --algo min --val sim -c 3 -k keeplist.txt simfile.txt resultfile.txt
 ```
 
-### Summary info written to stdout
+#### Summary info written to stdout
 
 Basic information about the original and reduced data sets will be printed to stdout. 
 
