@@ -88,11 +88,11 @@ greedysub --algo max --val dist -c 10 distfile.txt resultfile.txt
 greedysub --algo min --val sim -c 3 -k keeplist.txt simfile.txt resultfile.txt
 ```
 
-#### Summary info written to stdout
+### Summary info written to stdout
 
 Basic information about the original and reduced data sets will be printed to stdout. 
 
-**Example output:**
+#### Example output
 
 ```
 
@@ -111,6 +111,8 @@ Basic information about the original and reduced data sets will be printed to st
 	    cutoff:   10.00
 
 ```
+
+The `node degree` of an item is the number of neighbors it has (i.e., the number of other items that are closer to the item than the cutoff value).
 
 ## Overview
 
