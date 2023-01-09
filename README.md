@@ -68,9 +68,9 @@ klp2
 ...
 ```
 
-### Keep file
+### Keepfile
 
-The user can specify a list of names for items that must be retained in the subset under all circumstances (also even some of them are neighbors). This KEEPFILE should be a text file listing one name to be retained per line
+Using the option `-k <NAME OF KEEPFILE>` the user can specify a list of names for items that must be retained in the subset no matter what (even if some of them are neighbors). This KEEPFILE should be a text file listing one name to be retained per line
 
 ```
 abc1
