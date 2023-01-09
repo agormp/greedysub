@@ -1,9 +1,9 @@
-# greedyreduce: command line program for selecting representative, non-redundant subset of DNA or protein-sequences, based on list of pairwise sequence identities
+# greedysub: command line program for selecting representative, non-redundant subset of DNA or protein-sequences, based on list of pairwise sequence identities
 
 [![PyPI downloads](https://static.pepy.tech/personalized-badge/greedureduce?period=total&units=international_system&left_color=grey&right_color=blue&left_text=downloads)](https://pepy.tech/project/greedureduce)
 ![](https://img.shields.io/badge/version-1.0.0-blue)
 
-The main purpose of the `greedyreduce` program is to select a non-redundant subset of DNA- or protein-sequences, i.e., a subset where the pairwise sequence identity is below a given threshold. However, the program can be used to find representative subsets for any other type of items, for which pairwise similarities (or distances) are known.
+The main purpose of the `greedysub` program is to select a non-redundant subset of DNA- or protein-sequences, i.e., a subset where the pairwise sequence identity is below a given threshold. However, the program can be used to find representative subsets for any other type of items, for which pairwise similarities (or distances) are known.
 
 Input:
     
@@ -28,18 +28,18 @@ The program implements two related greedy heuristics for solving the problem: "m
 
 ## Availability
 
-The `greedyreduce` source code is available on GitHub: https://github.com/agormp/greedyreduce. The executable can be installed from PyPI: https://pypi.org/project/greedyreduce/
+The `greedysub` source code is available on GitHub: https://github.com/agormp/greedysub. The executable can be installed from PyPI: https://pypi.org/project/greedysub/
 
 ## Installation
 
 ```
-python3 -m pip install greedyreduce
+python3 -m pip install greedysub
 ```
 
 Upgrading to latest version:
 
 ```
-python3 -m pip install --upgrade greedyreduce
+python3 -m pip install --upgrade greedysub
 ```
 
 ## Dependencies
