@@ -162,9 +162,9 @@ This problem is [strongly NP-hard](https://en.wikipedia.org/wiki/Strong_NP-compl
 Given a graph G:
 
 * While there are still edges in G:
-	* Find a node $\nu$ of *minimum* degree in G
-	* Remove the neighbors of $\nu$
-* Output set of nodes left in G
+	* Select a node $\nu$ of *minimum* degree in G
+	* Remove $\nu$ and its neighbors
+* Output the set of selected nodes
 
 **Performance ratio:** On a graph with maximum node degree $\Delta$, it [has been shown ](https://link.springer.com/article/10.1007/BF02523693) that the greedy-min algorithm yields solutions that are within a factor $3 / (\Delta + 2)$ of the optimal solution. For instance, for $\Delta=4$ the algorithm is guaranteed to be no worse than $3 / (4 + 2) = 0.5$ times the optimal solution (i.e., the found solution will be at least half the size of the optimal one).
 
