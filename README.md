@@ -5,6 +5,27 @@
 
 ![](https://github.com/agormp/greedysub/raw/main/maxindset.png?raw=true)
 
+
+## Availability
+
+The `greedysub` source code is available on GitHub: https://github.com/agormp/greedysub. The executable can be installed from PyPI: https://pypi.org/project/greedysub/
+
+## Installation
+
+```
+python3 -m pip install greedysub
+```
+
+Upgrading to latest version:
+
+```
+python3 -m pip install --upgrade greedysub
+```
+
+## Dependencies
+
+There are no dependencies.
+
 ## Overview
 
 The main purpose of the `greedysub` program is to select a non-redundant subset of DNA- or protein-sequences, i.e., a subset where the pairwise sequence identity is below a given threshold. However, the program can be used to find representative subsets for any other type of items, for which pairwise similarities (or distances) are known. The subset is found using a greedy algorithm (hence the name).
@@ -29,26 +50,6 @@ Output:
 Reducing sequence redundancy is useful, e.g., when using cross-validation for estimating the performance of machine learning methods, such as neural networks, in order to avoid spuriously high performance estimates: if similar items (sequences) are present in training and test sets respectively, then the method will appear to be good at generalisation, when it may just have been overtrained on the items (sequences) in the training set. 
 
 The program implements two related greedy heuristics for solving the problem: "max" and "min". On average the "min" algorithm will be best (giving the largest subset). See section "Theory" for details on the algorithms, and for comments on the non-optimality of the heuristics for this problem.
-
-## Availability
-
-The `greedysub` source code is available on GitHub: https://github.com/agormp/greedysub. The executable can be installed from PyPI: https://pypi.org/project/greedysub/
-
-## Installation
-
-```
-python3 -m pip install greedysub
-```
-
-Upgrading to latest version:
-
-```
-python3 -m pip install --upgrade greedysub
-```
-
-## Dependencies
-
-There are no dependencies.
 
 ## Theory
 
