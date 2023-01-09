@@ -161,7 +161,7 @@ This problem is [strongly NP-hard](https://en.wikipedia.org/wiki/Strong_NP-compl
 Given a graph G:
 
 * While there are still edges in G:
-	* Find a node $\nu$ of minimum degree in G
+	* Find a node $\nu$ of *minimum* degree in G
 	* Remove the neighbors of $\nu$
 * Output set of nodes left in G
 
@@ -172,15 +172,14 @@ Given a graph G:
 Given a graph G:
 
 * While there are still edges in G:
-	* Find a node $\nu$ of maximum degree in G
+	* Find a node $\nu$ of *maximum* degree in G
 	* Remove $\nu$
 * Output set of nodes left in G
 
 **Performance ratio:** On a graph with maximum node degree $\Delta$, it [has been shown ](https://www.sciencedirect.com/science/article/pii/S0166218X02002056?via%3Dihub) that the greedy-max algorithm yields solutions that are within a factor $1 / (\Delta + 1)$ of the optimal solution. For instance, for $\Delta=4$ the algorithm is guaranteed to be no worse than $1 / (4 + 1) = 0.2$ times the optimal solution (i.e., the found solution will be at least 20% the size of the optimal one).
 
 
-### Performance:
+### Computational performance:
 
 The program has been optimized to run reasonably fast with limited memory usage. For instance: 100 million lines of pairwise distance info (about 2.3 GB) was analyzed in 52 seconds, using about 1 GB of memory, on a 2018 Macbook Pro.
 
-**Note:** Using the option `--check` to verify validity of input data is costly in terms of memory and runtime.
