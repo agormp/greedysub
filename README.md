@@ -7,7 +7,12 @@
 
 ## Overview
 
-The main purpose of the `greedysub` program is to select a non-redundant subset of DNA- or protein-sequences, i.e., a subset where the pairwise sequence identity is below a given threshold. However, the program can be used to find representative subsets for any other type of items. The program requires a list of pairwise similarities (or distances) as input, along with a cutoff specifying when two items are considered to be neighbors. The subset is found using a [greedy](https://en.wikipedia.org/wiki/Greedy_algorithm) algorithm (hence the name). 
+The main purpose of the `greedysub` program is to select a non-redundant subset of DNA- or protein-sequences, i.e., a subset where the pairwise sequence identity is below a given threshold. However, the program can be used to find representative subsets for any other type of items also. The program requires a list of pairwise similarities (or distances) as input, along with a cutoff specifying when two items are considered to be neighbors.
+
+Reducing sequence redundancy is helpful, e.g., when using cross-validation for estimating the predictive performance of machine learning methods, such as neural networks, in order to avoid spuriously high performance estimates: if similar items (sequences) are present in both training and test sets, then the method will appear to be good at generalisation, when it may just have been overtrained to recognize items (sequences) similar to those in the training set. 
+
+The program implements two related [greedy](https://en.wikipedia.org/wiki/Greedy_algorithm) heuristics for solving the problem: "greedy-max" and "greedy-min". On average the "min" algorithm will be best (giving the largest subset). See section "Theory" for details on the algorithms, and for comments on the non-optimality of the heuristics for this problem.
+
 
 ## Availability
 
@@ -61,6 +66,8 @@ yfg1  mcf9  0.87
 ...
 ```
 
+**Note:** The input file must contain one line for *each possible pair of items*.
+
 ### Output file
 
 The results are written to the OUTFILE, which will contain a list of names (one name per line) of sequences that should be retained: 
@@ -70,6 +77,10 @@ yfg1
 klp2
 ...
 ```
+
+**Note:** It is guaranteed that no two items in the resulting subset are neighbors.
+The program aims to find the maximally sized set of non-adjacent items (but see section Theory for why this is hard and not guaranteed).
+
 
 ### Keepfile
 
@@ -126,32 +137,6 @@ Basic information about the original and reduced data sets will be printed to st
 ```
 
 Here, the `node degree` of an item is the number of neighbors it has (i.e., the number of other items that are closer to the item than the cutoff value).
-
-## Overview
-
-The main purpose of the `greedysub` program is to select a non-redundant subset of DNA- or protein-sequences, i.e., a subset where the pairwise sequence identity is below a given threshold. However, the program can be used to find representative subsets for any other type of items, for which pairwise similarities (or distances) are known. The subset is found using a [greedy](https://en.wikipedia.org/wiki/Greedy_algorithm) algorithm (hence the name).
-
-**Input:**
-    
-* A file containing, on each line, the names of two items (sequences) and their pairwise similarity (sequence identity):
-	* `name1 name2 similarity`
-	* There must be a line for each possible pair of items
-	* It is also possible to provide the pairwise distance instead of similarity
-* A cutoff for deciding when two items are too similar. 
-	* Two items are "neighbors" if:
-		* similarity > cutoff
-	* or:
-		* distance < cutoff
-
-**Output:**
-
-* A file containing, on each line, the name of an item (sequence) that should be retained in the non-redundant subset.
-* It is guaranteed that no two items in the set are neighbors.
-* The program aims to find the maximally sized set of non-adjacent items (but see section Theory for why this is hard and not guaranteed).
-
-Reducing sequence redundancy is useful, e.g., when using cross-validation for estimating the performance of machine learning methods, such as neural networks, in order to avoid spuriously high performance estimates: if similar items (sequences) are present in both training and test sets, then the method will appear to be good at generalisation, when it may just have been overtrained on the items (sequences) in the training set. 
-
-The program implements two related greedy heuristics for solving the problem: "greedy-max" and "greedy-min". On average the "min" algorithm will be best (giving the largest subset). See section "Theory" for details on the algorithms, and for comments on the non-optimality of the heuristics for this problem.
 
 
 ## Theory
