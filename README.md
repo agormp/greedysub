@@ -70,7 +70,7 @@ yfg1  mcf9  0.87
 
 ### Output file
 
-The results are written to the OUTFILE, which will contain a list of names (one name per line) of sequences that should be retained: 
+The results are written to the OUTFILE, which will contain a list of names (one name per line) of sequences (items) that should be retained: 
 
 ```
 yfg1
@@ -147,20 +147,37 @@ Finding the largest subset of non-neighboring items from a list of pairwise simi
 
 * ["Maximum independent set problem"](https://en.wikipedia.org/wiki/Independent_set_(graph_theory)) from graph-theory: find the largest set of nodes on a graph, such that none of the nodes are adjacent.
 * ["Maximum clique problem"](https://en.wikipedia.org/wiki/Clique_problem#Finding_maximum_cliques_in_arbitrary_graphs): if a set of nodes constitute a maximum independent set, then the same nodes form a maximum [clique](https://en.wikipedia.org/wiki/Clique_(graph_theory)) on the [complement graph](https://en.wikipedia.org/wiki/Complement_graph).
-* ["Minimum vertex cover problem"](https://en.wikipedia.org/wiki/Vertex_cover): a minimum vertex cover is the smallest set of nodes that include an endpoint of all edges of the graph. This is the complement of a maximum independent set.
+* ["Minimum vertex cover problem"](https://en.wikipedia.org/wiki/Vertex_cover): a vertex cover is a set of nodes that includes at least one endpoint of all edges of the graph. A minimum vertex cover is the smallest possible such set. A minimum vertex cover is the complement of a maximum independent set.
 
 ### Computational intractibility of problem
 
-This problem is [strongly NP-hard](https://en.wikipedia.org/wiki/Strong_NP-completeness) and
-[hard to approximate](https://projecteuclid.org/journals/acta-mathematica/volume-182/issue-1/Clique-is-hard-to-approximate-within-n1ε/10.1007/BF02392825.full).  
+This problem is [strongly NP-hard](https://en.wikipedia.org/wiki/Strong_NP-completeness) and it is also
+[hard to approximate](https://projecteuclid.org/journals/acta-mathematica/volume-182/issue-1/Clique-is-hard-to-approximate-within-n1ε/10.1007/BF02392825.full). There are therefore no efficient, exact algorithms, although [there are exact algorithms with much better time complexity than the worst-case complexity of a naive, exhaustive search](https://arxiv.org/abs/1312.6260). 
 
+### Implemented algorithms
 
+#### Greedy-min algorithm
 
-### Checking validity of input data
+Given a graph G:
 
-By default the program assumes that input data are valid, i.e., that there are entries for all pairs of names, and that listed values are consistent (A B value == B A value). Using the option `--check`, it is possible to explicitly check this. If an error is found, the program will stop with an error message. If data are OK, the program will finish  and print results.
+* While there are still edges in G:
+	* Find a node $\nu$ of minimum degree in G
+	* Remove the neighbors of $\nu$
+* Output set of nodes left in G
 
-**Note:** Using this option requires storing all values in memory, and takes longer time to run.
+**Performance ratio:** On a graph with maximum node degree $\Delta$, it [has been shown ](https://link.springer.com/article/10.1007/BF02523693) that the greedy-min algorithm yields solutions that are within a factor $3 / (\Delta + 2)$ of the optimal solution. For instance, for $\Delta=4$ the algorithm is guaranteed to be no worse than $3 / (4 + 2) = 0.5$ times the optimal solution (i.e., the found solution will be at least half the size of the optimal one).
+
+#### Greedy-max algorithm
+
+Given a graph G:
+
+* While there are still edges in G:
+	* Find a node $\nu$ of maximum degree in G
+	* Remove $\nu$
+* Output set of nodes left in G
+
+**Performance ratio:** On a graph with maximum node degree $\Delta$, it [has been shown ](https://www.sciencedirect.com/science/article/pii/S0166218X02002056?via%3Dihub) that the greedy-max algorithm yields solutions that are within a factor $1 / (\Delta + 1)$ of the optimal solution. For instance, for $\Delta=4$ the algorithm is guaranteed to be no worse than $1 / (4 + 1) = 0.2$ times the optimal solution (i.e., the found solution will be at least 20% the size of the optimal one).
+
 
 ### Performance:
 
