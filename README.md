@@ -34,7 +34,7 @@ To find a subset of sequences, where no two sequences are more than 85% identica
 greedysub --algo min --val sim -c 0.85 simfile.txt resultfile.txt
 ```
 
-Here, `simfile.txt` is a textfile where each line lists the names of two sequences and their pairwise similarity (as a number in [0, 1]):
+Here, `simfile.txt` is a textfile where each line lists the names of two sequences and their pairwise similarity:
 
 ```
 yfg1  yfg2  0.98
@@ -44,6 +44,26 @@ yfg1  mcf9  0.87
 ```
 
 The file `resultfile.txt` contains a list of names (one name per line) of sequences that should be retained. Basic information about the original and reduced data sets will be printed to stdout. See below for more details and further options. 
+
+## Usage
+
+```
+usage: greedysub.py [-h] [--algo ALGORITHM] [--val VALUETYPE] [-c CUTOFF] [-k KEEPFILE] INFILE OUTFILE
+
+Selects subset of items, based on list of pairwise similarities (or distances), such that no retained items
+are close neighbors
+
+positional arguments:
+  INFILE            input file containing similarity or distance for each pair of items: name1 name2 value
+  OUTFILE           output file contatining reduced subset of items (one name per line)
+
+options:
+  -h, --help        show this help message and exit
+  --algo ALGORITHM  algorithm: min, max [default: min]
+  --val VALUETYPE   specify whether values in INFILE are distances (--val dist) or similarities (--val sim)
+  -c CUTOFF         cutoff value for deciding which pairs are neighbors
+  -k KEEPFILE       (optional) file with names of items that must be kept (one name per line)
+```
 
 ## Overview
 
