@@ -173,7 +173,7 @@ Given a graph G:
 Given a graph G:
 
 * While there are still edges in G:
-	* Find a node $\nu$ of *maximum* degree in G
+	* Select a node $\nu$ of *maximum* degree in G
 	* Remove $\nu$
 * Output set of nodes left in G
 
