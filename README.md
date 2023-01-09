@@ -5,6 +5,9 @@
 
 ![](https://github.com/agormp/greedysub/raw/main/maxindset.png?raw=true)
 
+## Overview
+
+The main purpose of the `greedysub` program is to select a non-redundant subset of DNA- or protein-sequences, i.e., a subset where the pairwise sequence identity is below a given threshold. However, the program can be used to find representative subsets for any other type of items. The program requires a list of pairwise similarities (or distances) as input, along with a cutoff specifying when two items are considered to be neighbors. The subset is found using a [greedy](https://en.wikipedia.org/wiki/Greedy_algorithm) algorithm (hence the name). 
 
 ## Availability
 
@@ -92,7 +95,7 @@ greedysub --algo min --val sim -c 0.75 simfile.txt resultfile.txt
 greedysub --algo min --val dist -c 10 distfile.txt resultfile.txt
 ```
 
-#### Select items with max pairwise similarity 3, while keeping items in keeplist.txt
+#### Select items with max pairwise similarity 3, while keeping items in keeplist.txt, using "greedy-max"
 
 ```
 greedysub --algo max --val sim -c 3 -k keeplist.txt simfile.txt resultfile.txt
@@ -106,7 +109,7 @@ Basic information about the original and reduced data sets will be printed to st
 
 ```
 
-	Names in reduced set written to tests/outfile.txt
+	Names in reduced set written to outfile.txt
 
 	Number in original set:      1,500
 	Number in reduced set:       1,252
@@ -122,7 +125,7 @@ Basic information about the original and reduced data sets will be printed to st
 
 ```
 
-The `node degree` of an item is the number of neighbors it has (i.e., the number of other items that are closer to the item than the cutoff value).
+Here, the `node degree` of an item is the number of neighbors it has (i.e., the number of other items that are closer to the item than the cutoff value).
 
 ## Overview
 
