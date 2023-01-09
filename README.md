@@ -1,43 +1,66 @@
-# greedyreduce: command line program for selecting representative subset of data, based on list of pairwise similarities (or distances) between items.
+# greedyreduce: command line program for selecting representative, non-redundant subset of DNA or protein-sequences, based on list of pairwise sequence identities
 
 [![PyPI downloads](https://static.pepy.tech/personalized-badge/greedureduce?period=total&units=international_system&left_color=grey&right_color=blue&left_text=downloads)](https://pepy.tech/project/greedureduce)
-![](https://img.shields.io/badge/version-0.1.0-blue)
+![](https://img.shields.io/badge/version-1.0.0-blue)
 
-The `greedureduce` program aims to select a representative subset from a collection of items for which the pairwise similarities are known.
+The main purpose of the `greedyreduce` program is to select a non-redundant subset of DNA- or protein-sequences, i.e., a subset where the pairwise sequence identity is below a given threshold. However, the program can be used to find representative subsets for any other type of items, for which pairwise similarities (or distances) are known.
 
-The program takes as input (1) a text-file containing a list of pairwise similarities between items in a data set, and (2) a cutoff for deciding when two items are too similar (i.e., when they are "neighbors").
+Input:
+    
+* A file containing, on each line, the names of two items (sequences) and their pairwise similarity (sequence identity):
+	* `name1 name2 similarity`
+* It is also possible to provide the pairwise distance instead:
+	* `name1 name2 distance`
+* A cutoff for deciding when two items are too similar. Two items are "neighbors" if:
+	* similarity > cutoff
+* or:
+	* distance < cutoff
 
-The output (written to stdout) is a list of names that should be kept in the subset. No retained items are neighbors, and the algorithm aims to pick the maximally sized such set, given the cutoff.
+Output:
 
-It is also possible to use a list of pairwise *distances* instead of similarities. The cutoff is then interpreted as the *minimum distance* required in the selected subset.
+* A file containing, on each line, the name of an item (sequence) that should be retained in the non-redundant subset.
+* It is guaranteed that no two items in the set are neighbors.
+* The program aims to find the maximally sized set of non-adjacent items (but see section Theory for why this is hard and not guaranteed).
 
-The "Hobohm" algorithm was originally created with the purpose of selecting homology-reduced sets of protein data from larger datasets. "Homology-reduced" here means that the resulting data set should contain no pairs of sequences with high sequence identity:
+Reducing sequence redundancy is useful, e.g., when using cross-validation for estimating the performance of machine learning methods, such as neural networks, in order to avoid spuriously high performance estimates: if similar items (sequences) are present in training and test sets respectively, then the method will appear to be good at generalisation, when it may just have been overtrained on the items (sequences) in the training set. 
 
-["Selection of representative protein data sets", Protein Sci. 1992. 1(3):409-17](https://pubmed.ncbi.nlm.nih.gov/1304348/).
-
-This command-line program implements algorithm 2 from that paper, and can be applied to any type of data for which pairwise similarities (or distances) can be defined.
-
-
+The program implements two related greedy heuristics for solving the problem: "max" and "min". On average the "min" algorithm will be best (giving the largest subset). See section "Theory" for details on the algorithms, and for comments on the non-optimality of the heuristics for this problem.
 
 ## Availability
 
-The `hobohm` source code is available on GitHub: https://github.com/agormp/hobohm. The executable can be installed from PyPI: https://pypi.org/project/hobohm/
+The `greedyreduce` source code is available on GitHub: https://github.com/agormp/greedyreduce. The executable can be installed from PyPI: https://pypi.org/project/greedyreduce/
 
 ## Installation
 
 ```
-python3 -m pip install hobohm
+python3 -m pip install greedyreduce
 ```
 
 Upgrading to latest version:
 
 ```
-python3 -m pip install --upgrade hobohm
+python3 -m pip install --upgrade greedyreduce
 ```
 
 ## Dependencies
 
 There are no dependencies.
+
+## Theory
+
+### Equivalence to "maximum independent set problem" and other problems
+
+Finding the largest subset of non-neighboring items from a list of pairwise similarities (or distances) is equivalent to the following problems:
+
+* !["Maximum independent set problem"](https://en.wikipedia.org/wiki/Independent_set_(graph_theory)) from graph-theory: find the largest set of nodes on a graph, such that none of the nodes are adjacent.
+* !["Maximum clique problem"](https://en.wikipedia.org/wiki/Clique_problem#Finding_maximum_cliques_in_arbitrary_graphs): if a set of nodes constute a maximum independent set, then the same nodes form a maximum ![clique](https://en.wikipedia.org/wiki/Clique_(graph_theory)) on the ![complement graph](https://en.wikipedia.org/wiki/Complement_graph).
+* !["Minimum vertex cover problem"](https://en.wikipedia.org/wiki/Vertex_cover): a minimum vertex cover is the smallest set of nodes that include an endpoint of all edges of the graph. This is the complement of a maximum independent set.
+
+### Computational intractibility of problem
+
+This problem is ![strongly NP-complete](https://en.wikipedia.org/wiki/Strong_NP-completeness) 
+
+
 
 ## Overview
 
