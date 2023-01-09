@@ -25,7 +25,7 @@ python3 -m pip install --upgrade greedysub
 ## Usage
 
 ```
-usage: greedysub.py [-h] [--algo ALGORITHM] [--val VALUETYPE] [-c CUTOFF] [-k KEEPFILE]
+usage: greedysub [-h] [--algo ALGORITHM] [--val VALUETYPE] [-c CUTOFF] [-k KEEPFILE]
                     INFILE OUTFILE
 
 Selects subset of items, based on list of pairwise similarities (or distances), such that
@@ -69,18 +69,20 @@ The file `resultfile.txt` contains a list of names (one name per line) of sequen
 
 The main purpose of the `greedysub` program is to select a non-redundant subset of DNA- or protein-sequences, i.e., a subset where the pairwise sequence identity is below a given threshold. However, the program can be used to find representative subsets for any other type of items, for which pairwise similarities (or distances) are known. The subset is found using a [greedy](https://en.wikipedia.org/wiki/Greedy_algorithm) algorithm (hence the name).
 
-Input:
+**Input:**
     
 * A file containing, on each line, the names of two items (sequences) and their pairwise similarity (sequence identity):
 	* `name1 name2 similarity`
-* It is also possible to provide the pairwise distance instead:
-	* `name1 name2 distance`
-* A cutoff for deciding when two items are too similar. Two items are "neighbors" if:
-	* similarity > cutoff
-* or:
-	* distance < cutoff
+	* There must be a line for each possible pair of items
+	* It is also possible to provide the pairwise distance instead
+		* `name1 name2 distance`
+* A cutoff for deciding when two items are too similar. 
+	* Two items are "neighbors" if:
+		* similarity > cutoff
+	* or:
+		* distance < cutoff
 
-Output:
+**Output:**
 
 * A file containing, on each line, the name of an item (sequence) that should be retained in the non-redundant subset.
 * It is guaranteed that no two items in the set are neighbors.
