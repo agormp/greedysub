@@ -28,7 +28,7 @@ There are no dependencies.
 
 ## Overview
 
-The main purpose of the `greedysub` program is to select a non-redundant subset of DNA- or protein-sequences, i.e., a subset where the pairwise sequence identity is below a given threshold. However, the program can be used to find representative subsets for any other type of items, for which pairwise similarities (or distances) are known. The subset is found using a ![greedy](https://en.wikipedia.org/wiki/Greedy_algorithm) algorithm (hence the name).
+The main purpose of the `greedysub` program is to select a non-redundant subset of DNA- or protein-sequences, i.e., a subset where the pairwise sequence identity is below a given threshold. However, the program can be used to find representative subsets for any other type of items, for which pairwise similarities (or distances) are known. The subset is found using a [greedy](https://en.wikipedia.org/wiki/Greedy_algorithm) algorithm (hence the name).
 
 Input:
     
@@ -57,9 +57,9 @@ The program implements two related greedy heuristics for solving the problem: "m
 
 Finding the largest subset of non-neighboring items from a list of pairwise similarities (or distances) is equivalent to the following problems:
 
-* !["Maximum independent set problem"](https://en.wikipedia.org/wiki/Independent_set_(graph_theory)) from graph-theory: find the largest set of nodes on a graph, such that none of the nodes are adjacent.
-* !["Maximum clique problem"](https://en.wikipedia.org/wiki/Clique_problem#Finding_maximum_cliques_in_arbitrary_graphs): if a set of nodes constute a maximum independent set, then the same nodes form a maximum ![clique](https://en.wikipedia.org/wiki/Clique_(graph_theory)) on the ![complement graph](https://en.wikipedia.org/wiki/Complement_graph).
-* !["Minimum vertex cover problem"](https://en.wikipedia.org/wiki/Vertex_cover): a minimum vertex cover is the smallest set of nodes that include an endpoint of all edges of the graph. This is the complement of a maximum independent set.
+* ["Maximum independent set problem"](https://en.wikipedia.org/wiki/Independent_set_(graph_theory)) from graph-theory: find the largest set of nodes on a graph, such that none of the nodes are adjacent.
+* ["Maximum clique problem"](https://en.wikipedia.org/wiki/Clique_problem#Finding_maximum_cliques_in_arbitrary_graphs): if a set of nodes constute a maximum independent set, then the same nodes form a maximum [clique](https://en.wikipedia.org/wiki/Clique_(graph_theory)) on the [complement graph](https://en.wikipedia.org/wiki/Complement_graph).
+* ["Minimum vertex cover problem"](https://en.wikipedia.org/wiki/Vertex_cover): a minimum vertex cover is the smallest set of nodes that include an endpoint of all edges of the graph. This is the complement of a maximum independent set.
 
 ### Computational intractibility of problem
 
