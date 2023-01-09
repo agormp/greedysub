@@ -22,29 +22,6 @@ Upgrading to latest version:
 python3 -m pip install --upgrade greedysub
 ```
 
-## Dependencies
-
-There are no dependencies.
-
-## Quick-start
-
-To find a subset of sequences, where no two sequences are more than 85% identical, using the "greedy-min" algorithm:
-
-```
-greedysub --algo min --val sim -c 0.85 simfile.txt resultfile.txt
-```
-
-Here, `simfile.txt` is a textfile where each line lists the names of two sequences and their pairwise similarity:
-
-```
-yfg1  yfg2  0.98
-yfg1  klp2  0.67
-yfg1  mcf9  0.87
-...
-```
-
-The file `resultfile.txt` contains a list of names (one name per line) of sequences that should be retained. Basic information about the original and reduced data sets will be printed to stdout. See below for more details and further options. 
-
 ## Usage
 
 ```
@@ -68,6 +45,25 @@ options:
   -k KEEPFILE       (optional) file with names of items that must be kept (one name per
                     line)
 ```
+
+## Quick-start
+
+To find a subset of sequences, where no two sequences are more than 85% identical, using the "greedy-min" algorithm:
+
+```
+greedysub --algo min --val sim -c 0.85 simfile.txt resultfile.txt
+```
+
+Here, `simfile.txt` is a textfile where each line lists the names of two sequences and their pairwise similarity:
+
+```
+yfg1  yfg2  0.98
+yfg1  klp2  0.67
+yfg1  mcf9  0.87
+...
+```
+
+The file `resultfile.txt` contains a list of names (one name per line) of sequences that should be retained. Basic information about the original and reduced data sets will be printed to stdout. See below for more details and further options. 
 
 ## Overview
 
