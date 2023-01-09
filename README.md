@@ -144,7 +144,7 @@ Here, the `node degree` of an item is the number of neighbors it has (i.e., the 
 
 ### Equivalence to "maximum independent set problem" and other problems
 
-Finding the largest subset of non-neighboring items from a list of pairwise similarities (or distances) is equivalent to the following problems:
+Finding the largest subset of non-neighboring sequences (items) from a list of pairwise similarities (or distances) is equivalent to the following problems:
 
 * ["Maximum independent set problem"](https://en.wikipedia.org/wiki/Independent_set_(graph_theory)) from graph-theory: find the largest set of nodes on a graph, such that none of the nodes are adjacent.
 * ["Maximum clique problem"](https://en.wikipedia.org/wiki/Clique_problem#Finding_maximum_cliques_in_arbitrary_graphs): if a set of nodes constitute a maximum independent set, then the same nodes form a maximum [clique](https://en.wikipedia.org/wiki/Clique_(graph_theory)) on the [complement graph](https://en.wikipedia.org/wiki/Complement_graph).
