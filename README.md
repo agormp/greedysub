@@ -8,7 +8,7 @@
 
 ## Overview
 
-The main purpose of the `greedysub` program is to select a non-redundant subset of DNA- or protein-sequences, i.e., a subset where all pairs of sequences have a pairwise sequence identity that is below a given threshold. However, the program can be used to find representative subsets for any other type of items also. The program requires a list of pairwise similarities (or distances) as input, along with a cutoff specifying when two items are considered to be neighbors.
+The main purpose of the `greedysub` program is to select a non-redundant subset of DNA- or protein-sequences, i.e., a subset where all pairwise sequence identities are below a given threshold. However, the program can be used to find representative subsets for any other type of items also. The program requires a list of pairwise similarities (or distances) as input, along with a cutoff specifying when two items are considered to be neighbors.
 
 Reducing sequence redundancy is helpful, e.g., when using cross-validation for estimating the predictive performance of machine learning methods, such as neural networks, in order to avoid spuriously high performance estimates: if similar items (sequences) are present in both training and test sets, then the method will appear to be good at generalisation, when it may just have been overtrained to recognize items (sequences) similar to those in the training set. 
 
