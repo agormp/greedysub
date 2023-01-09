@@ -28,7 +28,7 @@ There are no dependencies.
 
 ## Overview
 
-The main purpose of the `greedysub` program is to select a non-redundant subset of DNA- or protein-sequences, i.e., a subset where the pairwise sequence identity is below a given threshold. However, the program can be used to find representative subsets for any other type of items, for which pairwise similarities (or distances) are known. The subset is found using a greedy algorithm (hence the name).
+The main purpose of the `greedysub` program is to select a non-redundant subset of DNA- or protein-sequences, i.e., a subset where the pairwise sequence identity is below a given threshold. However, the program can be used to find representative subsets for any other type of items, for which pairwise similarities (or distances) are known. The subset is found using a ![greedy](https://en.wikipedia.org/wiki/Greedy_algorithm) algorithm (hence the name).
 
 Input:
     
