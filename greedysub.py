@@ -93,27 +93,28 @@ class NeighborGraph:
         # self.origdata["average_degree"]: average no. connections to a node before reducing
         # self.origdata["max/min_degree"]: max/min no. connections to a node before reducing
         # self.origdata["average_dist"]: average distance between pairs of nodes before reducing
-
-
-        with open(args.infile, "r") as infile:
-            df = pd.read_csv(infile, engine="c", delim_whitespace=True,
-                             names=["name1", "name2", "val"], dtype={"name1":str, "name2":str, "val":float})
-        self.nodes = set(df["name1"].values) | set(df["name2"].values)
-        valuesum = df["val"].values.sum()
-        if args.valuetype == "sim":
-            df = df.loc[df["val"].values > args.cutoff]
-        else:
-            df = df.loc[df["val"].values < args.cutoff]
-        df = df.loc[df["name1"].values != df["name2"].values]
-
+        nreadlines = 1000000
+        nodes = set()
         neighbors = defaultdict(set)
-        for name1, name2 in zip(df["name1"].values, df["name2"].values):
-            neighbors[name1].add(name2)
-            neighbors[name2].add(name1)
+        valuesum = 0
+        reader = pd.read_csv(args.infile, engine="c", delim_whitespace=True, chunksize=nreadlines,
+                             names=["name1", "name2", "val"], dtype={"name1":str, "name2":str, "val":float})
+        for df in reader:
+            nodes = nodes | set(df["name1"].values) | set(df["name2"].values)
+            valuesum += df["val"].values.sum()
+            if args.valuetype == "sim":
+                df = df.loc[df["val"].values > args.cutoff]
+            else:
+                df = df.loc[df["val"].values < args.cutoff]
+            df = df.loc[df["name1"].values != df["name2"].values]
+            for name1, name2 in zip(df["name1"].values, df["name2"].values):
+                neighbors[name1].add(name2)
+                neighbors[name2].add(name1)
 
         # Convert to regular dict (not defaultdict) to avoid gotchas with key generation on access
         # Python note: would it be faster to just use dict.setdefault() during creation?
         self.neighbors = dict(neighbors)
+        self.nodes = nodes
         self.neighbor_count = {}
         degreelist = []
         for name in self.neighbors:
