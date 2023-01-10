@@ -102,13 +102,13 @@ class NeighborGraph:
                              names=["name1", "name2", "val"], dtype={"name1":str, "name2":str, "val":float})
 
         maxmem = 0
-        pid = psutil.Process(os.getpid())
+        pid = psutil.Process(os.getpid())#EXPERIMENTAL
         for df in reader:
             nodes.update(df["name1"].values)
             nodes.update(df["name2"].values)
             valuesum += df["val"].values.sum()
             curmem = pid.memory_full_info().rss
-            if curmem > maxmem:
+            if curmem > maxmem:#EXPERIMENTAL
                 maxmem = curmem
 
             if args.valuetype == "sim":
@@ -120,7 +120,7 @@ class NeighborGraph:
                 neighbors[name1].add(name2)
                 neighbors[name2].add(name1)
             curmem = pid.memory_full_info().rss
-            if curmem > maxmem:
+            if curmem > maxmem:#EXPERIMENTAL
                 maxmem = curmem
 
 
@@ -135,7 +135,7 @@ class NeighborGraph:
             self.neighbor_count[name] = degree
             degreelist.append(degree)
         curmem = pid.memory_full_info().rss
-        if curmem > maxmem:
+        if curmem > maxmem: #EXPERIMENTAL
             maxmem = curmem
         self.origdata = {}
         self.origdata["orignum"] = len(self.nodes)
@@ -152,7 +152,7 @@ class NeighborGraph:
                     node = line.strip()
                     self.keepset.add(node)
         self.df = df
-        print(f"   Max memory used: {maxmem / (1024**2):,.2f} MB.")
+        print(f"   Max memory used: {maxmem / (1024**2):,.2f} MB.") #EXPERIMENTAL
 
     ############################################################################################
 
