@@ -1,6 +1,7 @@
 #!/usr/bin/env python3
 
 import argparse, sys, itertools
+import pandas as pd
 from collections import defaultdict
 from operator import itemgetter
 from pathlib import Path
@@ -53,7 +54,7 @@ def build_parser():
                              "for each pair of items: name1 name2 value")
 
     parser.add_argument("outfile", metavar='OUTFILE', type=Path,
-                        help="output file contatining reduced subset of items (one name per line)")
+                        help="output file contatining neighborless subset of items (one name per line)")
 
     #########################################################################################
 
@@ -92,34 +93,27 @@ class NeighborGraph:
         # self.origdata["average_degree"]: average no. connections to a node before reducing
         # self.origdata["max/min_degree"]: max/min no. connections to a node before reducing
         # self.origdata["average_dist"]: average distance between pairs of nodes before reducing
-        self.neighbors = defaultdict(set)
-        self.nodes = set()
-        cutoff = args.cutoff
-        valuesum = 0
-        if args.valuetype == "sim":
-            values_are_sim = True
-        else:
-            values_are_sim = False
+
+
         with open(args.infile, "r") as infile:
-            for line in infile:
-                name1,name2,value = line.split()
-                if name1 != name2:
-                    self.nodes.update([name1,name2])
-                    value = float(value)
-                    valuesum += value
-                    if values_are_sim:
-                        if value > cutoff:
-                            self.neighbors[name1].add(name2)
-                            self.neighbors[name2].add(name1)
-                    else:
-                        if value < cutoff:
-                            self.neighbors[name1].add(name2)
-                            self.neighbors[name2].add(name1)
+            df = pd.read_csv(infile, engine="c", delim_whitespace=True,
+                             names=["name1", "name2", "val"], dtype={"name1":str, "name2":str, "val":float})
+        self.nodes = set(df["name1"].values) | set(df["name2"].values)
+        valuesum = df["val"].values.sum()
+        if args.valuetype == "sim":
+            df = df.loc[df["val"].values > args.cutoff]
+        else:
+            df = df.loc[df["val"].values < args.cutoff]
+        df = df.loc[df["name1"].values != df["name2"].values]
+
+        neighbors = defaultdict(set)
+        for name1, name2 in zip(df["name1"].values, df["name2"].values):
+            neighbors[name1].add(name2)
+            neighbors[name2].add(name1)
 
         # Convert to regular dict (not defaultdict) to avoid gotchas with key generation on access
         # Python note: would it be faster to just use dict.setdefault() during creation?
-        self.neighbors = dict(self.neighbors)
-
+        self.neighbors = dict(neighbors)
         self.neighbor_count = {}
         degreelist = []
         for name in self.neighbors:
@@ -140,6 +134,7 @@ class NeighborGraph:
                 for line in keepfile:
                     node = line.strip()
                     self.keepset.add(node)
+        self.df = df
 
     ############################################################################################
 
