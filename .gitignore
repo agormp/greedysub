@@ -4,6 +4,7 @@ tests/.ipynb_checkpoints/
 tests/__pycache__/
 __pycache__/
 .DS_Store
-tests/outfile.txt
+tests/outfile*
 tests/testout.txt
+tests/pairwise*
 tmp/
