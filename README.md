@@ -2,9 +2,10 @@
 ### Command line program for selecting representative, non-redundant subset of DNA or protein-sequences, based on list of pairwise sequence identities
 
 [![PyPI downloads](https://static.pepy.tech/personalized-badge/greedureduce?period=total&units=international_system&left_color=grey&right_color=blue&left_text=downloads)](https://pepy.tech/project/greedureduce)
-![](https://img.shields.io/badge/version-1.0.1-blue)
+![](https://img.shields.io/badge/version-1.0.2-blue)
 
-![](https://raw.githubusercontent.com/agormp/greedysub/main/maxindset.png)
+![](https://github.com/agormp/greedysub/raw/main/maxindset.png?raw=true)
+
 
 ## Overview
 
@@ -12,7 +13,7 @@ The main purpose of the `greedysub` program is to select a non-redundant subset 
 
 Reducing sequence redundancy is helpful, e.g., when using cross-validation for estimating the predictive performance of machine learning methods, such as neural networks, in order to avoid spuriously high performance estimates: if similar items (sequences) are present in both training and test sets, then the method will appear to be good at generalisation, when it may just have been overtrained to recognize items (sequences) similar to those in the training set. 
 
-The program implements two related [greedy](https://en.wikipedia.org/wiki/Greedy_algorithm) heuristics for solving the problem: "greedy-max" and "greedy-min". On average the "min" algorithm will be best (giving the largest subset). See section "Theory" for details on the algorithms, and for comments on the non-optimality of the heuristics for this problem.
+The program implements two different [greedy](https://en.wikipedia.org/wiki/Greedy_algorithm) heuristics for solving the problem: "greedy-max" and "greedy-min". On average the "min" algorithm will be best (giving the largest subset). See section "Theory" for details on the algorithms, and for comments on the non-optimality of the heuristics for this problem.
 
 
 ## Availability
