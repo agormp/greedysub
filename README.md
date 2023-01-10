@@ -4,7 +4,7 @@
 ![](https://img.shields.io/badge/version-1.0.3-blue)
 [![PyPI downloads](https://static.pepy.tech/personalized-badge/greedureduce?period=total&units=international_system&left_color=grey&right_color=blue&left_text=downloads)](https://pepy.tech/project/greedureduce)
 
-![](https://github.com/agormp/greedysub/blob/master/maxindset.png?raw=true)
+![](https://github.com/agormp/greedysub/blob/main/maxindset.png?raw=true)
 
 
 ## Overview
