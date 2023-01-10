@@ -1,6 +1,6 @@
 #!/usr/bin/env python3
 
-import argparse, sys, itertools
+import argparse, sys, itertools, os, psutil
 import pandas as pd
 from collections import defaultdict
 from operator import itemgetter
@@ -81,6 +81,7 @@ class NeighborGraph:
     """Stores information about nodes and their connections.
     Methods for interrogating and changing graph"""
 
+    #@profile
     def __init__(self, args):
 
         # self.neighbors: dict(node:set(node's neighbors))
@@ -99,9 +100,17 @@ class NeighborGraph:
         valuesum = 0
         reader = pd.read_csv(args.infile, engine="c", delim_whitespace=True, chunksize=nreadlines,
                              names=["name1", "name2", "val"], dtype={"name1":str, "name2":str, "val":float})
+
+        maxmem = 0
+        pid = psutil.Process(os.getpid())
         for df in reader:
-            nodes = nodes | set(df["name1"].values) | set(df["name2"].values)
+            nodes.update(df["name1"].values)
+            nodes.update(df["name2"].values)
             valuesum += df["val"].values.sum()
+            curmem = pid.memory_full_info().rss
+            if curmem > maxmem:
+                maxmem = curmem
+
             if args.valuetype == "sim":
                 df = df.loc[df["val"].values > args.cutoff]
             else:
@@ -110,6 +119,10 @@ class NeighborGraph:
             for name1, name2 in zip(df["name1"].values, df["name2"].values):
                 neighbors[name1].add(name2)
                 neighbors[name2].add(name1)
+            curmem = pid.memory_full_info().rss
+            if curmem > maxmem:
+                maxmem = curmem
+
 
         # Convert to regular dict (not defaultdict) to avoid gotchas with key generation on access
         # Python note: would it be faster to just use dict.setdefault() during creation?
@@ -121,6 +134,9 @@ class NeighborGraph:
             degree = len(self.neighbors[name])
             self.neighbor_count[name] = degree
             degreelist.append(degree)
+        curmem = pid.memory_full_info().rss
+        if curmem > maxmem:
+            maxmem = curmem
         self.origdata = {}
         self.origdata["orignum"] = len(self.nodes)
         self.origdata["average_degree"] =  sum(degreelist) / self.origdata["orignum"]
@@ -136,6 +152,7 @@ class NeighborGraph:
                     node = line.strip()
                     self.keepset.add(node)
         self.df = df
+        print(f"   Max memory used: {maxmem / (1024**2):,.2f} MB.")
 
     ############################################################################################
 
@@ -172,6 +189,7 @@ class NeighborGraph:
 
     ############################################################################################
 
+    #@profile
     def remove_connection(self, node1, node2):
         """Removes the edge from node1 to node2 in graph"""
 
@@ -191,6 +209,7 @@ class NeighborGraph:
 
     ############################################################################################
 
+    #@profile
     def remove_neighbors(self, nodename):
         """Removes neighbors of nodename from graph, if there are any"""
 
