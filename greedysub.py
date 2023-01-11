@@ -1,6 +1,6 @@
 #!/usr/bin/env python3
 
-import argparse, sys, itertools, os, psutil
+import argparse, sys, itertools
 import pandas as pd
 from collections import defaultdict
 from operator import itemgetter
@@ -101,15 +101,10 @@ class NeighborGraph:
         reader = pd.read_csv(args.infile, engine="c", delim_whitespace=True, chunksize=nreadlines,
                              names=["name1", "name2", "val"], dtype={"name1":str, "name2":str, "val":float})
 
-        maxmem = 0
-        pid = psutil.Process(os.getpid())#EXPERIMENTAL
         for df in reader:
             nodes.update(df["name1"].values)
             nodes.update(df["name2"].values)
             valuesum += df["val"].values.sum()
-            curmem = pid.memory_full_info().rss
-            if curmem > maxmem:#EXPERIMENTAL
-                maxmem = curmem
 
             if args.valuetype == "sim":
                 df = df.loc[df["val"].values > args.cutoff]
@@ -119,10 +114,6 @@ class NeighborGraph:
             for name1, name2 in zip(df["name1"].values, df["name2"].values):
                 neighbors[name1].add(name2)
                 neighbors[name2].add(name1)
-            curmem = pid.memory_full_info().rss
-            if curmem > maxmem:#EXPERIMENTAL
-                maxmem = curmem
-
 
         # Convert to regular dict (not defaultdict) to avoid gotchas with key generation on access
         # Python note: would it be faster to just use dict.setdefault() during creation?
@@ -134,9 +125,6 @@ class NeighborGraph:
             degree = len(self.neighbors[name])
             self.neighbor_count[name] = degree
             degreelist.append(degree)
-        curmem = pid.memory_full_info().rss
-        if curmem > maxmem: #EXPERIMENTAL
-            maxmem = curmem
         self.origdata = {}
         self.origdata["orignum"] = len(self.nodes)
         self.origdata["average_degree"] =  sum(degreelist) / self.origdata["orignum"]
@@ -151,8 +139,7 @@ class NeighborGraph:
                 for line in keepfile:
                     node = line.strip()
                     self.keepset.add(node)
-        self.df = df
-        print(f"   Max memory used: {maxmem / (1024**2):,.2f} MB.") #EXPERIMENTAL
+        #self.df = df
 
     ############################################################################################
 
