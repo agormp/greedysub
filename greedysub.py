@@ -81,7 +81,6 @@ class NeighborGraph:
     """Stores information about nodes and their connections.
     Methods for interrogating and changing graph"""
 
-    #@profile
     def __init__(self, args):
 
         # self.neighbors: dict(node:set(node's neighbors))
