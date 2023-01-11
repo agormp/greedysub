@@ -35,7 +35,7 @@ python3 -m pip install --upgrade greedysub
 
 ## Dependencies
 
-`greedysub` relies on the [pandas package](https://pandas.pydata.org), which is automatically included when using pip to install.
+`greedysub` relies on the [pandas package](https://pandas.pydata.org) and the [numpy package](https://numpy.org). These are automatically included when using pip to install.
 
 ## Usage
 
