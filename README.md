@@ -1,7 +1,7 @@
 ## greedysub
 ### Command line program for selecting representative, non-redundant subset of DNA or protein-sequences, based on list of pairwise sequence identities
 
-![](https://img.shields.io/badge/version-1.0.4-blue)
+![](https://img.shields.io/badge/version-1.1.0-blue)
 [![PyPI downloads](https://static.pepy.tech/personalized-badge/greedureduce?period=total&units=international_system&left_color=grey&right_color=blue&left_text=downloads)](https://pepy.tech/project/greedureduce)
 
 ![](https://github.com/agormp/greedysub/raw/main/maxindset.png?raw=true)
@@ -183,5 +183,5 @@ Given a graph G:
 
 ### Computational performance:
 
-The program has been optimized to run reasonably fast with limited memory usage. For instance: 100 million lines of pairwise distance info (about 2.3 GB) was analyzed in 52 seconds, using about 1 GB of memory, on a 2018 Macbook Pro.
+The program has been optimized to run reasonably fast with limited memory usage. For instance: 100 million lines of pairwise distance info (about 3.5 GB) was analyzed in 29 seconds, using about 400 MB of memory, on a 2021 Macbook Pro.
 
