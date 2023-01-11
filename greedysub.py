@@ -83,7 +83,7 @@ class NeighborGraph:
     """Stores information about nodes and their connections.
     Methods for interrogating and changing graph"""
 
-
+    @profile
     def __init__(self, args):
 
         # self.neighbors: dict(node:set(node's neighbors))
@@ -178,7 +178,6 @@ class NeighborGraph:
 
     ############################################################################################
 
-    #@profile
     def remove_connection(self, node1, node2):
         """Removes the edge from node1 to node2 in graph"""
 
@@ -198,7 +197,6 @@ class NeighborGraph:
 
     ############################################################################################
 
-    #@profile
     def remove_neighbors(self, nodename):
         """Removes neighbors of nodename from graph, if there are any"""
 
