@@ -6,5 +6,6 @@ __pycache__/
 .DS_Store
 tests/outfile*
 tests/testout.txt
-tests/pairwise*
+tests/pair*
 tmp/
+mprof*
