@@ -32,7 +32,6 @@ def main(commandlist=None):
 # Python note: "commandlist" is to enable unit testing of argparse code
 # Will be "None" when run in script mode, and argparse will then automatically take values from sys.argv[1:]
 
-
 def parse_commandline(commandlist):
     parser = build_parser()
     args = parser.parse_args(commandlist)
@@ -43,7 +42,6 @@ def parse_commandline(commandlist):
     return args
 
 ################################################################################################
-
 
 def build_parser():
 
@@ -83,7 +81,6 @@ class NeighborGraph:
     """Stores information about nodes and their connections.
     Methods for interrogating and changing graph"""
 
-    @profile
     def __init__(self, args):
 
         # self.neighbors: dict(node:set(node's neighbors))
