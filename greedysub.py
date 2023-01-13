@@ -1,10 +1,10 @@
 #!/usr/bin/env python3
 
 import argparse, sys, itertools
-import pandas as pd
 from collections import defaultdict
 from operator import itemgetter
 from pathlib import Path
+import dask.dataframe as dd
 
 ################################################################################################
 
@@ -93,26 +93,28 @@ class NeighborGraph:
         # self.origdata["average_degree"]: average no. connections to a node before reducing
         # self.origdata["max/min_degree"]: max/min no. connections to a node before reducing
         # self.origdata["average_dist"]: average distance between pairs of nodes before reducing
-        nreadlines = 1000000
-        nodes = set()
+
+        ddf = dd.read_csv(args.infile,
+                          delimiter=" ",
+                          names=["name1", "name2", "val"],
+                          dtype={"name1":str, "name2":str, "val":float})
+
+        valuesum = ddf["val"].values.sum()
+        nodes1 = ddf["name1"].values
+        nodes2 = ddf["name1"].values
+        ddf2 = ddf.loc[ddf["val"].values < 1.5]
+        ddf2 = ddf2.loc[ddf2["name1"].values != ddf2["name2"].values]
+
+        valuesum = valuesum.compute()
+        nodes = set(nodes1.compute())
+        nodes.update(nodes2.compute())
+
+        ddf2 = ddf2.compute()
         neighbors = defaultdict(set)
-        valuesum = 0
-        reader = pd.read_csv(args.infile, engine="c", delim_whitespace=True, chunksize=nreadlines,
-                             names=["name1", "name2", "val"], dtype={"name1":str, "name2":str, "val":float})
+        for name1, name2 in zip(ddf2["name1"].values, ddf2["name2"].values):
+            neighbors[name1].add(name2)
+            neighbors[name2].add(name1)
 
-        for df in reader:
-            nodes.update(df["name1"].values)
-            nodes.update(df["name2"].values)
-            valuesum += df["val"].values.sum()
-
-            if args.valuetype == "sim":
-                df = df.loc[df["val"].values > args.cutoff]
-            else:
-                df = df.loc[df["val"].values < args.cutoff]
-            df = df.loc[df["name1"].values != df["name2"].values]
-            for name1, name2 in zip(df["name1"].values, df["name2"].values):
-                neighbors[name1].add(name2)
-                neighbors[name2].add(name1)
 
         # Convert to regular dict (not defaultdict) to avoid gotchas with key generation on access
         # Python note: would it be faster to just use dict.setdefault() during creation?
