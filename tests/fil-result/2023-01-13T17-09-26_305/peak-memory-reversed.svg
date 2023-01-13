@@ -1,0 +1,2141 @@
+<?xml version="1.0" standalone="no"?><!DOCTYPE svg PUBLIC "-//W3C//DTD SVG 1.1//EN" "http://www.w3.org/Graphics/SVG/1.1/DTD/svg11.dtd"><svg version="1.1" width="1200" height="4372" onload="init(evt)" viewBox="0 0 1200 4372" xmlns="http://www.w3.org/2000/svg" xmlns:xlink="http://www.w3.org/1999/xlink" xmlns:fg="http://github.com/jonhoo/inferno">
+    <!--Flame graph stack visualization. See https://github.com/brendangregg/FlameGraph for latest version, and http://www.brendangregg.com/flamegraphs.html for examples.-->
+    <!--NOTES: -->
+    <defs>
+        <linearGradient id="background" y1="0" y2="1" x1="0" x2="0">
+            <stop stop-color="#eeeeee" offset="5%"/>
+            <stop stop-color="#eeeeb0" offset="95%"/>
+        </linearGradient>
+    </defs>
+    <style type="text/css">
+text { font-family:monospace; font-size:16px; fill:rgb(0,0,0); }
+#title { text-anchor:middle; font-size:21px; }
+#matched { text-anchor:end; }
+#search { text-anchor:end; opacity:0.1; cursor:pointer; }
+#search:hover, #search.show { opacity:1; }
+#subtitle { text-anchor:middle; font-color:rgb(160,160,160); }
+#unzoom { cursor:pointer; }
+#frames > *:hover { stroke:black; stroke-width:0.5; cursor:pointer; }
+.hide { display:none; }
+.parent { opacity:0.5; }
+</style>
+    <script type="text/ecmascript"><![CDATA[
+        var nametype = 'Function:';
+        var fontsize = 16;
+        var fontwidth = 0.59;
+        var xpad = 10;
+        var inverted = true;
+        var searchcolor = 'rgb(230,0,230)';
+        var fluiddrawing = true;
+        var truncate_text_right = false;
+    ]]><![CDATA["use strict";
+var details, searchbtn, unzoombtn, matchedtxt, svg, searching, frames, known_font_width;
+function init(evt) {
+    details = document.getElementById("details").firstChild;
+    searchbtn = document.getElementById("search");
+    unzoombtn = document.getElementById("unzoom");
+    matchedtxt = document.getElementById("matched");
+    svg = document.getElementsByTagName("svg")[0];
+    frames = document.getElementById("frames");
+    known_font_width = get_monospace_width(frames);
+    total_samples = parseInt(frames.attributes.total_samples.value);
+    searching = 0;
+
+    // Use GET parameters to restore a flamegraph's state.
+    var restore_state = function() {
+        var params = get_params();
+        if (params.x && params.y)
+            zoom(find_group(document.querySelector('[*|x="' + params.x + '"][y="' + params.y + '"]')));
+        if (params.s)
+            search(params.s);
+    };
+
+    if (fluiddrawing) {
+        // Make width dynamic so the SVG fits its parent's width.
+        svg.removeAttribute("width");
+        // Edge requires us to have a viewBox that gets updated with size changes.
+        var isEdge = /Edge\/\d./i.test(navigator.userAgent);
+        if (!isEdge) {
+            svg.removeAttribute("viewBox");
+        }
+        var update_for_width_change = function() {
+            if (isEdge) {
+                svg.attributes.viewBox.value = "0 0 " + svg.width.baseVal.value + " " + svg.height.baseVal.value;
+            }
+
+            // Keep consistent padding on left and right of frames container.
+            frames.attributes.width.value = svg.width.baseVal.value - xpad * 2;
+
+            // Text truncation needs to be adjusted for the current width.
+            update_text_for_elements(frames.children);
+
+            // Keep search elements at a fixed distance from right edge.
+            var svgWidth = svg.width.baseVal.value;
+            searchbtn.attributes.x.value = svgWidth - xpad;
+            matchedtxt.attributes.x.value = svgWidth - xpad;
+        };
+        window.addEventListener('resize', function() {
+            update_for_width_change();
+        });
+        // This needs to be done asynchronously for Safari to work.
+        setTimeout(function() {
+            unzoom();
+            update_for_width_change();
+            restore_state();
+        }, 0);
+    } else {
+        restore_state();
+    }
+}
+// event listeners
+window.addEventListener("click", function(e) {
+    var target = find_group(e.target);
+    if (target) {
+        if (target.nodeName == "a") {
+            if (e.ctrlKey === false) return;
+            e.preventDefault();
+        }
+        if (target.classList.contains("parent")) unzoom();
+        zoom(target);
+
+        // set parameters for zoom state
+        var el = target.querySelector("rect");
+        if (el && el.attributes && el.attributes.y && el.attributes["fg:x"]) {
+            var params = get_params()
+            params.x = el.attributes["fg:x"].value;
+            params.y = el.attributes.y.value;
+            history.replaceState(null, null, parse_params(params));
+        }
+    }
+    else if (e.target.id == "unzoom") {
+        unzoom();
+
+        // remove zoom state
+        var params = get_params();
+        if (params.x) delete params.x;
+        if (params.y) delete params.y;
+        history.replaceState(null, null, parse_params(params));
+    }
+    else if (e.target.id == "search") search_prompt();
+}, false)
+// mouse-over for info
+// show
+window.addEventListener("mouseover", function(e) {
+    var target = find_group(e.target);
+    if (target) details.nodeValue = nametype + " " + g_to_text(target);
+}, false)
+// clear
+window.addEventListener("mouseout", function(e) {
+    var target = find_group(e.target);
+    if (target) details.nodeValue = ' ';
+}, false)
+// ctrl-F for search
+window.addEventListener("keydown",function (e) {
+    if (e.keyCode === 114 || (e.ctrlKey && e.keyCode === 70)) {
+        e.preventDefault();
+        search_prompt();
+    }
+}, false)
+// functions
+function get_params() {
+    var params = {};
+    var paramsarr = window.location.search.substr(1).split('&');
+    for (var i = 0; i < paramsarr.length; ++i) {
+        var tmp = paramsarr[i].split("=");
+        if (!tmp[0] || !tmp[1]) continue;
+        params[tmp[0]]  = decodeURIComponent(tmp[1]);
+    }
+    return params;
+}
+function parse_params(params) {
+    var uri = "?";
+    for (var key in params) {
+        uri += key + '=' + encodeURIComponent(params[key]) + '&';
+    }
+    if (uri.slice(-1) == "&")
+        uri = uri.substring(0, uri.length - 1);
+    if (uri == '?')
+        uri = window.location.href.split('?')[0];
+    return uri;
+}
+function find_child(node, selector) {
+    var children = node.querySelectorAll(selector);
+    if (children.length) return children[0];
+    return;
+}
+function find_group(node) {
+    var parent = node.parentElement;
+    if (!parent) return;
+    if (parent.id == "frames") return node;
+    return find_group(parent);
+}
+function orig_save(e, attr, val) {
+    if (e.attributes["fg:orig_" + attr] != undefined) return;
+    if (e.attributes[attr] == undefined) return;
+    if (val == undefined) val = e.attributes[attr].value;
+    e.setAttribute("fg:orig_" + attr, val);
+}
+function orig_load(e, attr) {
+    if (e.attributes["fg:orig_"+attr] == undefined) return;
+    e.attributes[attr].value = e.attributes["fg:orig_" + attr].value;
+    e.removeAttribute("fg:orig_" + attr);
+}
+function g_to_text(e) {
+    var text = find_child(e, "title").firstChild.nodeValue;
+    return (text)
+}
+function g_to_func(e) {
+    var func = g_to_text(e);
+    // if there's any manipulation we want to do to the function
+    // name before it's searched, do it here before returning.
+    return (func);
+}
+function get_monospace_width(frames) {
+    // Given the id="frames" element, return the width of text characters if
+    // this is a monospace font, otherwise return 0.
+    text = find_child(frames.children[0], "text");
+    originalContent = text.textContent;
+    text.textContent = "!";
+    bangWidth = text.getComputedTextLength();
+    text.textContent = "W";
+    wWidth = text.getComputedTextLength();
+    text.textContent = originalContent;
+    if (bangWidth === wWidth) {
+        return bangWidth;
+    } else {
+        return 0;
+    }
+}
+function update_text_for_elements(elements) {
+    // In order to render quickly in the browser, you want to do one pass of
+    // reading attributes, and one pass of mutating attributes. See
+    // https://web.dev/avoid-large-complex-layouts-and-layout-thrashing/ for details.
+
+    // Fall back to inefficient calculation, if we're variable-width font.
+    // TODO This should be optimized somehow too.
+    if (known_font_width === 0) {
+        for (var i = 0; i < elements.length; i++) {
+            update_text(elements[i]);
+        }
+        return;
+    }
+
+    var textElemNewAttributes = [];
+    for (var i = 0; i < elements.length; i++) {
+        var e = elements[i];
+        var r = find_child(e, "rect");
+        var t = find_child(e, "text");
+        var w = parseFloat(r.attributes.width.value) * frames.attributes.width.value / 100 - 3;
+        var txt = find_child(e, "title").textContent.replace(/\([^(]*\)$/,"");
+        var newX = format_percent((parseFloat(r.attributes.x.value) + (100 * 3 / frames.attributes.width.value)));
+
+        // Smaller than this size won't fit anything
+        if (w < 2 * known_font_width) {
+            textElemNewAttributes.push([newX, ""]);
+            continue;
+        }
+
+        // Fit in full text width
+        if (txt.length * known_font_width < w) {
+            textElemNewAttributes.push([newX, txt]);
+            continue;
+        }
+
+        var substringLength = Math.floor(w / known_font_width) - 2;
+        if (truncate_text_right) {
+            // Truncate the right side of the text.
+            textElemNewAttributes.push([newX, txt.substring(0, substringLength) + ".."]);
+            continue;
+        } else {
+            // Truncate the left side of the text.
+            textElemNewAttributes.push([newX, ".." + txt.substring(txt.length - substringLength, txt.length)]);
+            continue;
+        }
+    }
+
+    console.assert(textElemNewAttributes.length === elements.length, "Resize failed, please file a bug at https://github.com/jonhoo/inferno/");
+
+    // Now that we know new textContent, set it all in one go so we don't refresh a bazillion times.
+    for (var i = 0; i < elements.length; i++) {
+        var e = elements[i];
+        var values = textElemNewAttributes[i];
+        var t = find_child(e, "text");
+        t.attributes.x.value = values[0];
+        t.textContent = values[1];
+    }
+}
+
+function update_text(e) {
+    var r = find_child(e, "rect");
+    var t = find_child(e, "text");
+    var w = parseFloat(r.attributes.width.value) * frames.attributes.width.value / 100 - 3;
+    var txt = find_child(e, "title").textContent.replace(/\([^(]*\)$/,"");
+    t.attributes.x.value = format_percent((parseFloat(r.attributes.x.value) + (100 * 3 / frames.attributes.width.value)));
+
+    // Smaller than this size won't fit anything
+    if (w < 2 * fontsize * fontwidth) {
+        t.textContent = "";
+        return;
+    }
+    t.textContent = txt;
+    // Fit in full text width
+    if (t.getComputedTextLength() < w)
+        return;
+    if (truncate_text_right) {
+        // Truncate the right side of the text.
+        for (var x = txt.length - 2; x > 0; x--) {
+            if (t.getSubStringLength(0, x + 2) <= w) {
+                t.textContent = txt.substring(0, x) + "..";
+                return;
+            }
+        }
+    } else {
+        // Truncate the left side of the text.
+        for (var x = 2; x < txt.length; x++) {
+            if (t.getSubStringLength(x - 2, txt.length) <= w) {
+                t.textContent = ".." + txt.substring(x, txt.length);
+                return;
+            }
+        }
+    }
+    t.textContent = "";
+}
+// zoom
+function zoom_reset(e) {
+    if (e.tagName == "rect") {
+        e.attributes.x.value = format_percent(100 * parseInt(e.attributes["fg:x"].value) / total_samples);
+        e.attributes.width.value = format_percent(100 * parseInt(e.attributes["fg:w"].value) / total_samples);
+    }
+    if (e.childNodes == undefined) return;
+    for(var i = 0, c = e.childNodes; i < c.length; i++) {
+        zoom_reset(c[i]);
+    }
+}
+function zoom_child(e, x, zoomed_width_samples) {
+    if (e.tagName == "text") {
+        var parent_x = parseFloat(find_child(e.parentNode, "rect[x]").attributes.x.value);
+        e.attributes.x.value = format_percent(parent_x + (100 * 3 / frames.attributes.width.value));
+    } else if (e.tagName == "rect") {
+        e.attributes.x.value = format_percent(100 * (parseInt(e.attributes["fg:x"].value) - x) / zoomed_width_samples);
+        e.attributes.width.value = format_percent(100 * parseInt(e.attributes["fg:w"].value) / zoomed_width_samples);
+    }
+    if (e.childNodes == undefined) return;
+    for(var i = 0, c = e.childNodes; i < c.length; i++) {
+        zoom_child(c[i], x, zoomed_width_samples);
+    }
+}
+function zoom_parent(e) {
+    if (e.attributes) {
+        if (e.attributes.x != undefined) {
+            e.attributes.x.value = "0.0%";
+        }
+        if (e.attributes.width != undefined) {
+            e.attributes.width.value = "100.0%";
+        }
+    }
+    if (e.childNodes == undefined) return;
+    for(var i = 0, c = e.childNodes; i < c.length; i++) {
+        zoom_parent(c[i]);
+    }
+}
+function zoom(node) {
+    var attr = find_child(node, "rect").attributes;
+    var width = parseInt(attr["fg:w"].value);
+    var xmin = parseInt(attr["fg:x"].value);
+    var xmax = xmin + width;
+    var ymin = parseFloat(attr.y.value);
+    unzoombtn.classList.remove("hide");
+    var el = frames.children;
+    var to_update_text = [];
+    for (var i = 0; i < el.length; i++) {
+        var e = el[i];
+        var a = find_child(e, "rect").attributes;
+        var ex = parseInt(a["fg:x"].value);
+        var ew = parseInt(a["fg:w"].value);
+        // Is it an ancestor
+        if (!inverted) {
+            var upstack = parseFloat(a.y.value) > ymin;
+        } else {
+            var upstack = parseFloat(a.y.value) < ymin;
+        }
+        if (upstack) {
+            // Direct ancestor
+            if (ex <= xmin && (ex+ew) >= xmax) {
+                e.classList.add("parent");
+                zoom_parent(e);
+                to_update_text.push(e);
+            }
+            // not in current path
+            else
+                e.classList.add("hide");
+        }
+        // Children maybe
+        else {
+            // no common path
+            if (ex < xmin || ex >= xmax) {
+                e.classList.add("hide");
+            }
+            else {
+                zoom_child(e, xmin, width);
+                to_update_text.push(e);
+            }
+        }
+    }
+    update_text_for_elements(to_update_text);
+}
+function unzoom() {
+    unzoombtn.classList.add("hide");
+    var el = frames.children;
+    for(var i = 0; i < el.length; i++) {
+        el[i].classList.remove("parent");
+        el[i].classList.remove("hide");
+        zoom_reset(el[i]);
+    }
+    update_text_for_elements(el);
+}
+// search
+function reset_search() {
+    var el = document.querySelectorAll("#frames rect");
+    for (var i = 0; i < el.length; i++) {
+        orig_load(el[i], "fill")
+    }
+    var params = get_params();
+    delete params.s;
+    history.replaceState(null, null, parse_params(params));
+}
+function search_prompt() {
+    if (!searching) {
+        var term = prompt("Enter a search term (regexp " +
+            "allowed, eg: ^ext4_)", "");
+        if (term != null) {
+            search(term)
+        }
+    } else {
+        reset_search();
+        searching = 0;
+        searchbtn.classList.remove("show");
+        searchbtn.firstChild.nodeValue = "Search"
+        matchedtxt.classList.add("hide");
+        matchedtxt.firstChild.nodeValue = ""
+    }
+}
+function search(term) {
+    var re = new RegExp(term);
+    var el = frames.children;
+    var matches = new Object();
+    var maxwidth = 0;
+    for (var i = 0; i < el.length; i++) {
+        var e = el[i];
+        // Skip over frames which are either not visible, or below the zoomed-to frame
+        if (e.classList.contains("hide") || e.classList.contains("parent")) {
+            continue;
+        }
+        var func = g_to_func(e);
+        var rect = find_child(e, "rect");
+        if (func == null || rect == null)
+            continue;
+        // Save max width. Only works as we have a root frame
+        var w = parseInt(rect.attributes["fg:w"].value);
+        if (w > maxwidth)
+            maxwidth = w;
+        if (func.match(re)) {
+            // highlight
+            var x = parseInt(rect.attributes["fg:x"].value);
+            orig_save(rect, "fill");
+            rect.attributes.fill.value = searchcolor;
+            // remember matches
+            if (matches[x] == undefined) {
+                matches[x] = w;
+            } else {
+                if (w > matches[x]) {
+                    // overwrite with parent
+                    matches[x] = w;
+                }
+            }
+            searching = 1;
+        }
+    }
+    if (!searching)
+        return;
+    var params = get_params();
+    params.s = term;
+    history.replaceState(null, null, parse_params(params));
+
+    searchbtn.classList.add("show");
+    searchbtn.firstChild.nodeValue = "Reset Search";
+    // calculate percent matched, excluding vertical overlap
+    var count = 0;
+    var lastx = -1;
+    var lastw = 0;
+    var keys = Array();
+    for (k in matches) {
+        if (matches.hasOwnProperty(k))
+            keys.push(k);
+    }
+    // sort the matched frames by their x location
+    // ascending, then width descending
+    keys.sort(function(a, b){
+        return a - b;
+    });
+    // Step through frames saving only the biggest bottom-up frames
+    // thanks to the sort order. This relies on the tree property
+    // where children are always smaller than their parents.
+    for (var k in keys) {
+        var x = parseInt(keys[k]);
+        var w = matches[keys[k]];
+        if (x >= lastx + lastw) {
+            count += w;
+            lastx = x;
+            lastw = w;
+        }
+    }
+    // display matched percent
+    matchedtxt.classList.remove("hide");
+    var pct = 100 * count / maxwidth;
+    if (pct != 100) pct = pct.toFixed(1);
+    matchedtxt.firstChild.nodeValue = "Matched: " + pct + "%";
+}
+function format_percent(n) {
+    return n.toFixed(4) + "%";
+}
+]]></script>
+    <rect x="0" y="0" width="100%" height="4372" fill="url(#background)"/>
+    <text id="title" x="50.0000%" y="32.00">Peak Tracked Memory Usage (2474.7 MiB), Reversed</text>
+    <text id="subtitle" x="50.0000%" y="64.00">Made with the Fil profiler. <a href="https://pythonspeed.com/fil/" style="text-decoration: underline;" target="_parent">Try it on your code!</a></text>
+    <text id="details" x="10" y="84.00"> </text>
+    <text id="unzoom" class="hide" x="10" y="32.00">Reset Zoom</text>
+    <text id="search" x="1190" y="32.00">Search</text>
+    <text id="matched" x="1190" y="4359.00"> </text>
+    <svg id="frames" x="10" width="1180" total_samples="2569020121">
+        <g>
+            <title>from . import _iterative (302,008,728 bytes, 11.76%)</title>
+            <rect x="0.0000%" y="474" width="11.7558%" height="21" fill="rgb(255,198,198)" fg:x="0" fg:w="302008728"/>
+            <text x="0.2500%" y="487.50">from . impo..</text>
+        </g>
+        <g>
+            <title>/Users/agpe/.pyenv/versions/3.10.7/lib/python3.10/site-packages/scipy/sparse/linalg/_isolve/iterative.py:9 (&lt;module&gt;) (302,008,728 bytes, 11.76%)</title>
+            <rect x="0.0000%" y="496" width="11.7558%" height="21" fill="rgb(255,198,198)" fg:x="0" fg:w="302008728"/>
+            <text x="0.2500%" y="509.50">/Users/agpe/..</text>
+        </g>
+        <g>
+            <title> (302,008,728 bytes, 11.76%)</title>
+            <rect x="0.0000%" y="518" width="11.7558%" height="21" fill="rgb(255,198,198)" fg:x="0" fg:w="302008728"/>
+            <text x="0.2500%" y="531.50"></text>
+        </g>
+        <g>
+            <title>&lt;frozen importlib._bootstrap&gt;:241 (_call_with_frames_removed) (302,008,728 bytes, 11.76%)</title>
+            <rect x="0.0000%" y="540" width="11.7558%" height="21" fill="rgb(255,198,198)" fg:x="0" fg:w="302008728"/>
+            <text x="0.2500%" y="553.50">&lt;frozen impo..</text>
+        </g>
+        <g>
+            <title> (302,008,728 bytes, 11.76%)</title>
+            <rect x="0.0000%" y="562" width="11.7558%" height="21" fill="rgb(255,198,198)" fg:x="0" fg:w="302008728"/>
+            <text x="0.2500%" y="575.50"></text>
+        </g>
+        <g>
+            <title>&lt;frozen importlib._bootstrap_external&gt;:883 (exec_module) (302,008,728 bytes, 11.76%)</title>
+            <rect x="0.0000%" y="584" width="11.7558%" height="21" fill="rgb(255,198,198)" fg:x="0" fg:w="302008728"/>
+            <text x="0.2500%" y="597.50">&lt;frozen impo..</text>
+        </g>
+        <g>
+            <title> (302,008,728 bytes, 11.76%)</title>
+            <rect x="0.0000%" y="606" width="11.7558%" height="21" fill="rgb(255,198,198)" fg:x="0" fg:w="302008728"/>
+            <text x="0.2500%" y="619.50"></text>
+        </g>
+        <g>
+            <title>&lt;frozen importlib._bootstrap&gt;:688 (_load_unlocked) (302,008,728 bytes, 11.76%)</title>
+            <rect x="0.0000%" y="628" width="11.7558%" height="21" fill="rgb(255,198,198)" fg:x="0" fg:w="302008728"/>
+            <text x="0.2500%" y="641.50">&lt;frozen impo..</text>
+        </g>
+        <g>
+            <title> (302,008,728 bytes, 11.76%)</title>
+            <rect x="0.0000%" y="650" width="11.7558%" height="21" fill="rgb(255,198,198)" fg:x="0" fg:w="302008728"/>
+            <text x="0.2500%" y="663.50"></text>
+        </g>
+        <g>
+            <title>&lt;frozen importlib._bootstrap&gt;:1006 (_find_and_load_unlocked) (302,008,728 bytes, 11.76%)</title>
+            <rect x="0.0000%" y="672" width="11.7558%" height="21" fill="rgb(255,198,198)" fg:x="0" fg:w="302008728"/>
+            <text x="0.2500%" y="685.50">&lt;frozen impo..</text>
+        </g>
+        <g>
+            <title> (302,008,728 bytes, 11.76%)</title>
+            <rect x="0.0000%" y="694" width="11.7558%" height="21" fill="rgb(255,198,198)" fg:x="0" fg:w="302008728"/>
+            <text x="0.2500%" y="707.50"></text>
+        </g>
+        <g>
+            <title>&lt;frozen importlib._bootstrap&gt;:1027 (_find_and_load) (302,008,728 bytes, 11.76%)</title>
+            <rect x="0.0000%" y="716" width="11.7558%" height="21" fill="rgb(255,198,198)" fg:x="0" fg:w="302008728"/>
+            <text x="0.2500%" y="729.50">&lt;frozen impo..</text>
+        </g>
+        <g>
+            <title>from .iterative import * (302,008,728 bytes, 11.76%)</title>
+            <rect x="0.0000%" y="738" width="11.7558%" height="21" fill="rgb(255,198,198)" fg:x="0" fg:w="302008728"/>
+            <text x="0.2500%" y="751.50">from .itera..</text>
+        </g>
+        <g>
+            <title>/Users/agpe/.pyenv/versions/3.10.7/lib/python3.10/site-packages/scipy/sparse/linalg/_isolve/__init__.py:4 (&lt;module&gt;) (302,008,728 bytes, 11.76%)</title>
+            <rect x="0.0000%" y="760" width="11.7558%" height="21" fill="rgb(255,198,198)" fg:x="0" fg:w="302008728"/>
+            <text x="0.2500%" y="773.50">/Users/agpe/..</text>
+        </g>
+        <g>
+            <title> (302,008,728 bytes, 11.76%)</title>
+            <rect x="0.0000%" y="782" width="11.7558%" height="21" fill="rgb(255,198,198)" fg:x="0" fg:w="302008728"/>
+            <text x="0.2500%" y="795.50"></text>
+        </g>
+        <g>
+            <title>&lt;frozen importlib._bootstrap&gt;:241 (_call_with_frames_removed) (302,008,728 bytes, 11.76%)</title>
+            <rect x="0.0000%" y="804" width="11.7558%" height="21" fill="rgb(255,198,198)" fg:x="0" fg:w="302008728"/>
+            <text x="0.2500%" y="817.50">&lt;frozen impo..</text>
+        </g>
+        <g>
+            <title> (302,008,728 bytes, 11.76%)</title>
+            <rect x="0.0000%" y="826" width="11.7558%" height="21" fill="rgb(255,198,198)" fg:x="0" fg:w="302008728"/>
+            <text x="0.2500%" y="839.50"></text>
+        </g>
+        <g>
+            <title>&lt;frozen importlib._bootstrap_external&gt;:883 (exec_module) (302,008,728 bytes, 11.76%)</title>
+            <rect x="0.0000%" y="848" width="11.7558%" height="21" fill="rgb(255,198,198)" fg:x="0" fg:w="302008728"/>
+            <text x="0.2500%" y="861.50">&lt;frozen impo..</text>
+        </g>
+        <g>
+            <title> (302,008,728 bytes, 11.76%)</title>
+            <rect x="0.0000%" y="870" width="11.7558%" height="21" fill="rgb(255,198,198)" fg:x="0" fg:w="302008728"/>
+            <text x="0.2500%" y="883.50"></text>
+        </g>
+        <g>
+            <title>&lt;frozen importlib._bootstrap&gt;:688 (_load_unlocked) (302,008,728 bytes, 11.76%)</title>
+            <rect x="0.0000%" y="892" width="11.7558%" height="21" fill="rgb(255,198,198)" fg:x="0" fg:w="302008728"/>
+            <text x="0.2500%" y="905.50">&lt;frozen impo..</text>
+        </g>
+        <g>
+            <title> (302,008,728 bytes, 11.76%)</title>
+            <rect x="0.0000%" y="914" width="11.7558%" height="21" fill="rgb(255,198,198)" fg:x="0" fg:w="302008728"/>
+            <text x="0.2500%" y="927.50"></text>
+        </g>
+        <g>
+            <title>&lt;frozen importlib._bootstrap&gt;:1006 (_find_and_load_unlocked) (302,008,728 bytes, 11.76%)</title>
+            <rect x="0.0000%" y="936" width="11.7558%" height="21" fill="rgb(255,198,198)" fg:x="0" fg:w="302008728"/>
+            <text x="0.2500%" y="949.50">&lt;frozen impo..</text>
+        </g>
+        <g>
+            <title> (302,008,728 bytes, 11.76%)</title>
+            <rect x="0.0000%" y="958" width="11.7558%" height="21" fill="rgb(255,198,198)" fg:x="0" fg:w="302008728"/>
+            <text x="0.2500%" y="971.50"></text>
+        </g>
+        <g>
+            <title>&lt;frozen importlib._bootstrap&gt;:1027 (_find_and_load) (302,008,728 bytes, 11.76%)</title>
+            <rect x="0.0000%" y="980" width="11.7558%" height="21" fill="rgb(255,198,198)" fg:x="0" fg:w="302008728"/>
+            <text x="0.2500%" y="993.50">&lt;frozen impo..</text>
+        </g>
+        <g>
+            <title>from ._isolve import * (302,008,728 bytes, 11.76%)</title>
+            <rect x="0.0000%" y="1002" width="11.7558%" height="21" fill="rgb(255,198,198)" fg:x="0" fg:w="302008728"/>
+            <text x="0.2500%" y="1015.50">from ._isol..</text>
+        </g>
+        <g>
+            <title>/Users/agpe/.pyenv/versions/3.10.7/lib/python3.10/site-packages/scipy/sparse/linalg/__init__.py:120 (&lt;module&gt;) (302,008,728 bytes, 11.76%)</title>
+            <rect x="0.0000%" y="1024" width="11.7558%" height="21" fill="rgb(255,198,198)" fg:x="0" fg:w="302008728"/>
+            <text x="0.2500%" y="1037.50">/Users/agpe/..</text>
+        </g>
+        <g>
+            <title> (302,008,728 bytes, 11.76%)</title>
+            <rect x="0.0000%" y="1046" width="11.7558%" height="21" fill="rgb(255,198,198)" fg:x="0" fg:w="302008728"/>
+            <text x="0.2500%" y="1059.50"></text>
+        </g>
+        <g>
+            <title>&lt;frozen importlib._bootstrap&gt;:241 (_call_with_frames_removed) (302,008,728 bytes, 11.76%)</title>
+            <rect x="0.0000%" y="1068" width="11.7558%" height="21" fill="rgb(255,198,198)" fg:x="0" fg:w="302008728"/>
+            <text x="0.2500%" y="1081.50">&lt;frozen impo..</text>
+        </g>
+        <g>
+            <title> (302,008,728 bytes, 11.76%)</title>
+            <rect x="0.0000%" y="1090" width="11.7558%" height="21" fill="rgb(255,198,198)" fg:x="0" fg:w="302008728"/>
+            <text x="0.2500%" y="1103.50"></text>
+        </g>
+        <g>
+            <title>&lt;frozen importlib._bootstrap_external&gt;:883 (exec_module) (302,008,728 bytes, 11.76%)</title>
+            <rect x="0.0000%" y="1112" width="11.7558%" height="21" fill="rgb(255,198,198)" fg:x="0" fg:w="302008728"/>
+            <text x="0.2500%" y="1125.50">&lt;frozen impo..</text>
+        </g>
+        <g>
+            <title> (302,008,728 bytes, 11.76%)</title>
+            <rect x="0.0000%" y="1134" width="11.7558%" height="21" fill="rgb(255,198,198)" fg:x="0" fg:w="302008728"/>
+            <text x="0.2500%" y="1147.50"></text>
+        </g>
+        <g>
+            <title>&lt;frozen importlib._bootstrap&gt;:688 (_load_unlocked) (302,008,728 bytes, 11.76%)</title>
+            <rect x="0.0000%" y="1156" width="11.7558%" height="21" fill="rgb(255,198,198)" fg:x="0" fg:w="302008728"/>
+            <text x="0.2500%" y="1169.50">&lt;frozen impo..</text>
+        </g>
+        <g>
+            <title> (302,008,728 bytes, 11.76%)</title>
+            <rect x="0.0000%" y="1178" width="11.7558%" height="21" fill="rgb(255,198,198)" fg:x="0" fg:w="302008728"/>
+            <text x="0.2500%" y="1191.50"></text>
+        </g>
+        <g>
+            <title>&lt;frozen importlib._bootstrap&gt;:1006 (_find_and_load_unlocked) (302,008,728 bytes, 11.76%)</title>
+            <rect x="0.0000%" y="1200" width="11.7558%" height="21" fill="rgb(255,198,198)" fg:x="0" fg:w="302008728"/>
+            <text x="0.2500%" y="1213.50">&lt;frozen impo..</text>
+        </g>
+        <g>
+            <title> (302,008,728 bytes, 11.76%)</title>
+            <rect x="0.0000%" y="1222" width="11.7558%" height="21" fill="rgb(255,198,198)" fg:x="0" fg:w="302008728"/>
+            <text x="0.2500%" y="1235.50"></text>
+        </g>
+        <g>
+            <title>&lt;frozen importlib._bootstrap&gt;:1027 (_find_and_load) (302,008,728 bytes, 11.76%)</title>
+            <rect x="0.0000%" y="1244" width="11.7558%" height="21" fill="rgb(255,198,198)" fg:x="0" fg:w="302008728"/>
+            <text x="0.2500%" y="1257.50">&lt;frozen impo..</text>
+        </g>
+        <g>
+            <title>from scipy.sparse.linalg import LinearOperator (302,008,728 bytes, 11.76%)</title>
+            <rect x="0.0000%" y="1266" width="11.7558%" height="21" fill="rgb(255,198,198)" fg:x="0" fg:w="302008728"/>
+            <text x="0.2500%" y="1279.50">from scipy...</text>
+        </g>
+        <g>
+            <title>/Users/agpe/.pyenv/versions/3.10.7/lib/python3.10/site-packages/scipy/sparse/csgraph/_laplacian.py:7 (&lt;module&gt;) (302,008,728 bytes, 11.76%)</title>
+            <rect x="0.0000%" y="1288" width="11.7558%" height="21" fill="rgb(255,198,198)" fg:x="0" fg:w="302008728"/>
+            <text x="0.2500%" y="1301.50">/Users/agpe/..</text>
+        </g>
+        <g>
+            <title> (302,008,728 bytes, 11.76%)</title>
+            <rect x="0.0000%" y="1310" width="11.7558%" height="21" fill="rgb(255,198,198)" fg:x="0" fg:w="302008728"/>
+            <text x="0.2500%" y="1323.50"></text>
+        </g>
+        <g>
+            <title>&lt;frozen importlib._bootstrap&gt;:241 (_call_with_frames_removed) (302,008,728 bytes, 11.76%)</title>
+            <rect x="0.0000%" y="1332" width="11.7558%" height="21" fill="rgb(255,198,198)" fg:x="0" fg:w="302008728"/>
+            <text x="0.2500%" y="1345.50">&lt;frozen impo..</text>
+        </g>
+        <g>
+            <title> (302,008,728 bytes, 11.76%)</title>
+            <rect x="0.0000%" y="1354" width="11.7558%" height="21" fill="rgb(255,198,198)" fg:x="0" fg:w="302008728"/>
+            <text x="0.2500%" y="1367.50"></text>
+        </g>
+        <g>
+            <title>&lt;frozen importlib._bootstrap_external&gt;:883 (exec_module) (302,008,728 bytes, 11.76%)</title>
+            <rect x="0.0000%" y="1376" width="11.7558%" height="21" fill="rgb(255,198,198)" fg:x="0" fg:w="302008728"/>
+            <text x="0.2500%" y="1389.50">&lt;frozen impo..</text>
+        </g>
+        <g>
+            <title> (302,008,728 bytes, 11.76%)</title>
+            <rect x="0.0000%" y="1398" width="11.7558%" height="21" fill="rgb(255,198,198)" fg:x="0" fg:w="302008728"/>
+            <text x="0.2500%" y="1411.50"></text>
+        </g>
+        <g>
+            <title>&lt;frozen importlib._bootstrap&gt;:688 (_load_unlocked) (302,008,728 bytes, 11.76%)</title>
+            <rect x="0.0000%" y="1420" width="11.7558%" height="21" fill="rgb(255,198,198)" fg:x="0" fg:w="302008728"/>
+            <text x="0.2500%" y="1433.50">&lt;frozen impo..</text>
+        </g>
+        <g>
+            <title> (302,008,728 bytes, 11.76%)</title>
+            <rect x="0.0000%" y="1442" width="11.7558%" height="21" fill="rgb(255,198,198)" fg:x="0" fg:w="302008728"/>
+            <text x="0.2500%" y="1455.50"></text>
+        </g>
+        <g>
+            <title>&lt;frozen importlib._bootstrap&gt;:1006 (_find_and_load_unlocked) (302,008,728 bytes, 11.76%)</title>
+            <rect x="0.0000%" y="1464" width="11.7558%" height="21" fill="rgb(255,198,198)" fg:x="0" fg:w="302008728"/>
+            <text x="0.2500%" y="1477.50">&lt;frozen impo..</text>
+        </g>
+        <g>
+            <title> (302,008,728 bytes, 11.76%)</title>
+            <rect x="0.0000%" y="1486" width="11.7558%" height="21" fill="rgb(255,198,198)" fg:x="0" fg:w="302008728"/>
+            <text x="0.2500%" y="1499.50"></text>
+        </g>
+        <g>
+            <title>&lt;frozen importlib._bootstrap&gt;:1027 (_find_and_load) (302,008,728 bytes, 11.76%)</title>
+            <rect x="0.0000%" y="1508" width="11.7558%" height="21" fill="rgb(255,198,198)" fg:x="0" fg:w="302008728"/>
+            <text x="0.2500%" y="1521.50">&lt;frozen impo..</text>
+        </g>
+        <g>
+            <title>from ._laplacian import laplacian (302,008,728 bytes, 11.76%)</title>
+            <rect x="0.0000%" y="1530" width="11.7558%" height="21" fill="rgb(255,198,198)" fg:x="0" fg:w="302008728"/>
+            <text x="0.2500%" y="1543.50">from ._lapl..</text>
+        </g>
+        <g>
+            <title>/Users/agpe/.pyenv/versions/3.10.7/lib/python3.10/site-packages/scipy/sparse/csgraph/__init__.py:182 (&lt;module&gt;) (302,008,728 bytes, 11.76%)</title>
+            <rect x="0.0000%" y="1552" width="11.7558%" height="21" fill="rgb(255,198,198)" fg:x="0" fg:w="302008728"/>
+            <text x="0.2500%" y="1565.50">/Users/agpe/..</text>
+        </g>
+        <g>
+            <title> (302,008,728 bytes, 11.76%)</title>
+            <rect x="0.0000%" y="1574" width="11.7558%" height="21" fill="rgb(255,198,198)" fg:x="0" fg:w="302008728"/>
+            <text x="0.2500%" y="1587.50"></text>
+        </g>
+        <g>
+            <title>&lt;frozen importlib._bootstrap&gt;:241 (_call_with_frames_removed) (302,008,728 bytes, 11.76%)</title>
+            <rect x="0.0000%" y="1596" width="11.7558%" height="21" fill="rgb(255,198,198)" fg:x="0" fg:w="302008728"/>
+            <text x="0.2500%" y="1609.50">&lt;frozen impo..</text>
+        </g>
+        <g>
+            <title> (302,008,728 bytes, 11.76%)</title>
+            <rect x="0.0000%" y="1618" width="11.7558%" height="21" fill="rgb(255,198,198)" fg:x="0" fg:w="302008728"/>
+            <text x="0.2500%" y="1631.50"></text>
+        </g>
+        <g>
+            <title>&lt;frozen importlib._bootstrap_external&gt;:883 (exec_module) (302,008,728 bytes, 11.76%)</title>
+            <rect x="0.0000%" y="1640" width="11.7558%" height="21" fill="rgb(255,198,198)" fg:x="0" fg:w="302008728"/>
+            <text x="0.2500%" y="1653.50">&lt;frozen impo..</text>
+        </g>
+        <g>
+            <title> (302,008,728 bytes, 11.76%)</title>
+            <rect x="0.0000%" y="1662" width="11.7558%" height="21" fill="rgb(255,198,198)" fg:x="0" fg:w="302008728"/>
+            <text x="0.2500%" y="1675.50"></text>
+        </g>
+        <g>
+            <title>&lt;frozen importlib._bootstrap&gt;:688 (_load_unlocked) (302,008,728 bytes, 11.76%)</title>
+            <rect x="0.0000%" y="1684" width="11.7558%" height="21" fill="rgb(255,198,198)" fg:x="0" fg:w="302008728"/>
+            <text x="0.2500%" y="1697.50">&lt;frozen impo..</text>
+        </g>
+        <g>
+            <title> (302,008,728 bytes, 11.76%)</title>
+            <rect x="0.0000%" y="1706" width="11.7558%" height="21" fill="rgb(255,198,198)" fg:x="0" fg:w="302008728"/>
+            <text x="0.2500%" y="1719.50"></text>
+        </g>
+        <g>
+            <title>&lt;frozen importlib._bootstrap&gt;:1006 (_find_and_load_unlocked) (302,008,728 bytes, 11.76%)</title>
+            <rect x="0.0000%" y="1728" width="11.7558%" height="21" fill="rgb(255,198,198)" fg:x="0" fg:w="302008728"/>
+            <text x="0.2500%" y="1741.50">&lt;frozen impo..</text>
+        </g>
+        <g>
+            <title> (302,008,728 bytes, 11.76%)</title>
+            <rect x="0.0000%" y="1750" width="11.7558%" height="21" fill="rgb(255,198,198)" fg:x="0" fg:w="302008728"/>
+            <text x="0.2500%" y="1763.50"></text>
+        </g>
+        <g>
+            <title>&lt;frozen importlib._bootstrap&gt;:1027 (_find_and_load) (302,008,728 bytes, 11.76%)</title>
+            <rect x="0.0000%" y="1772" width="11.7558%" height="21" fill="rgb(255,198,198)" fg:x="0" fg:w="302008728"/>
+            <text x="0.2500%" y="1785.50">&lt;frozen impo..</text>
+        </g>
+        <g>
+            <title> (302,008,728 bytes, 11.76%)</title>
+            <rect x="0.0000%" y="1794" width="11.7558%" height="21" fill="rgb(255,198,198)" fg:x="0" fg:w="302008728"/>
+            <text x="0.2500%" y="1807.50"></text>
+        </g>
+        <g>
+            <title>&lt;frozen importlib._bootstrap&gt;:241 (_call_with_frames_removed) (302,008,728 bytes, 11.76%)</title>
+            <rect x="0.0000%" y="1816" width="11.7558%" height="21" fill="rgb(255,198,198)" fg:x="0" fg:w="302008728"/>
+            <text x="0.2500%" y="1829.50">&lt;frozen impo..</text>
+        </g>
+        <g>
+            <title> (302,008,728 bytes, 11.76%)</title>
+            <rect x="0.0000%" y="1838" width="11.7558%" height="21" fill="rgb(255,198,198)" fg:x="0" fg:w="302008728"/>
+            <text x="0.2500%" y="1851.50"></text>
+        </g>
+        <g>
+            <title>&lt;frozen importlib._bootstrap&gt;:1078 (_handle_fromlist) (302,008,728 bytes, 11.76%)</title>
+            <rect x="0.0000%" y="1860" width="11.7558%" height="21" fill="rgb(255,198,198)" fg:x="0" fg:w="302008728"/>
+            <text x="0.2500%" y="1873.50">&lt;frozen impo..</text>
+        </g>
+        <g>
+            <title>from . import csgraph (302,008,728 bytes, 11.76%)</title>
+            <rect x="0.0000%" y="1882" width="11.7558%" height="21" fill="rgb(255,198,198)" fg:x="0" fg:w="302008728"/>
+            <text x="0.2500%" y="1895.50">from . impo..</text>
+        </g>
+        <g>
+            <title>/Users/agpe/.pyenv/versions/3.10.7/lib/python3.10/site-packages/scipy/sparse/__init__.py:283 (&lt;module&gt;) (302,008,728 bytes, 11.76%)</title>
+            <rect x="0.0000%" y="1904" width="11.7558%" height="21" fill="rgb(255,198,198)" fg:x="0" fg:w="302008728"/>
+            <text x="0.2500%" y="1917.50">/Users/agpe/..</text>
+        </g>
+        <g>
+            <title> (302,008,728 bytes, 11.76%)</title>
+            <rect x="0.0000%" y="1926" width="11.7558%" height="21" fill="rgb(255,198,198)" fg:x="0" fg:w="302008728"/>
+            <text x="0.2500%" y="1939.50"></text>
+        </g>
+        <g>
+            <title>&lt;frozen importlib._bootstrap&gt;:241 (_call_with_frames_removed) (302,008,728 bytes, 11.76%)</title>
+            <rect x="0.0000%" y="1948" width="11.7558%" height="21" fill="rgb(255,198,198)" fg:x="0" fg:w="302008728"/>
+            <text x="0.2500%" y="1961.50">&lt;frozen impo..</text>
+        </g>
+        <g>
+            <title> (302,008,728 bytes, 11.76%)</title>
+            <rect x="0.0000%" y="1970" width="11.7558%" height="21" fill="rgb(255,198,198)" fg:x="0" fg:w="302008728"/>
+            <text x="0.2500%" y="1983.50"></text>
+        </g>
+        <g>
+            <title>&lt;frozen importlib._bootstrap_external&gt;:883 (exec_module) (302,008,728 bytes, 11.76%)</title>
+            <rect x="0.0000%" y="1992" width="11.7558%" height="21" fill="rgb(255,198,198)" fg:x="0" fg:w="302008728"/>
+            <text x="0.2500%" y="2005.50">&lt;frozen impo..</text>
+        </g>
+        <g>
+            <title> (302,008,728 bytes, 11.76%)</title>
+            <rect x="0.0000%" y="2014" width="11.7558%" height="21" fill="rgb(255,198,198)" fg:x="0" fg:w="302008728"/>
+            <text x="0.2500%" y="2027.50"></text>
+        </g>
+        <g>
+            <title>&lt;frozen importlib._bootstrap&gt;:688 (_load_unlocked) (302,008,728 bytes, 11.76%)</title>
+            <rect x="0.0000%" y="2036" width="11.7558%" height="21" fill="rgb(255,198,198)" fg:x="0" fg:w="302008728"/>
+            <text x="0.2500%" y="2049.50">&lt;frozen impo..</text>
+        </g>
+        <g>
+            <title> (302,008,728 bytes, 11.76%)</title>
+            <rect x="0.0000%" y="2058" width="11.7558%" height="21" fill="rgb(255,198,198)" fg:x="0" fg:w="302008728"/>
+            <text x="0.2500%" y="2071.50"></text>
+        </g>
+        <g>
+            <title>&lt;frozen importlib._bootstrap&gt;:1006 (_find_and_load_unlocked) (302,008,728 bytes, 11.76%)</title>
+            <rect x="0.0000%" y="2080" width="11.7558%" height="21" fill="rgb(255,198,198)" fg:x="0" fg:w="302008728"/>
+            <text x="0.2500%" y="2093.50">&lt;frozen impo..</text>
+        </g>
+        <g>
+            <title> (302,008,728 bytes, 11.76%)</title>
+            <rect x="0.0000%" y="2102" width="11.7558%" height="21" fill="rgb(255,198,198)" fg:x="0" fg:w="302008728"/>
+            <text x="0.2500%" y="2115.50"></text>
+        </g>
+        <g>
+            <title>&lt;frozen importlib._bootstrap&gt;:1027 (_find_and_load) (302,008,728 bytes, 11.76%)</title>
+            <rect x="0.0000%" y="2124" width="11.7558%" height="21" fill="rgb(255,198,198)" fg:x="0" fg:w="302008728"/>
+            <text x="0.2500%" y="2137.50">&lt;frozen impo..</text>
+        </g>
+        <g>
+            <title>    import scipy.sparse (302,008,728 bytes, 11.76%)</title>
+            <rect x="0.0000%" y="2146" width="11.7558%" height="21" fill="rgb(255,198,198)" fg:x="0" fg:w="302008728"/>
+            <text x="0.2500%" y="2159.50">    import ..</text>
+        </g>
+        <g>
+            <title>/Users/agpe/.pyenv/versions/3.10.7/lib/python3.10/site-packages/dask/array/chunk_types.py:129 (&lt;module&gt;) (302,008,728 bytes, 11.76%)</title>
+            <rect x="0.0000%" y="2168" width="11.7558%" height="21" fill="rgb(255,198,198)" fg:x="0" fg:w="302008728"/>
+            <text x="0.2500%" y="2181.50">/Users/agpe/..</text>
+        </g>
+        <g>
+            <title> (302,008,728 bytes, 11.76%)</title>
+            <rect x="0.0000%" y="2190" width="11.7558%" height="21" fill="rgb(255,198,198)" fg:x="0" fg:w="302008728"/>
+            <text x="0.2500%" y="2203.50"></text>
+        </g>
+        <g>
+            <title>&lt;frozen importlib._bootstrap&gt;:241 (_call_with_frames_removed) (302,008,728 bytes, 11.76%)</title>
+            <rect x="0.0000%" y="2212" width="11.7558%" height="21" fill="rgb(255,198,198)" fg:x="0" fg:w="302008728"/>
+            <text x="0.2500%" y="2225.50">&lt;frozen impo..</text>
+        </g>
+        <g>
+            <title> (302,008,728 bytes, 11.76%)</title>
+            <rect x="0.0000%" y="2234" width="11.7558%" height="21" fill="rgb(255,198,198)" fg:x="0" fg:w="302008728"/>
+            <text x="0.2500%" y="2247.50"></text>
+        </g>
+        <g>
+            <title>&lt;frozen importlib._bootstrap_external&gt;:883 (exec_module) (302,008,728 bytes, 11.76%)</title>
+            <rect x="0.0000%" y="2256" width="11.7558%" height="21" fill="rgb(255,198,198)" fg:x="0" fg:w="302008728"/>
+            <text x="0.2500%" y="2269.50">&lt;frozen impo..</text>
+        </g>
+        <g>
+            <title> (302,008,728 bytes, 11.76%)</title>
+            <rect x="0.0000%" y="2278" width="11.7558%" height="21" fill="rgb(255,198,198)" fg:x="0" fg:w="302008728"/>
+            <text x="0.2500%" y="2291.50"></text>
+        </g>
+        <g>
+            <title>&lt;frozen importlib._bootstrap&gt;:688 (_load_unlocked) (302,008,728 bytes, 11.76%)</title>
+            <rect x="0.0000%" y="2300" width="11.7558%" height="21" fill="rgb(255,198,198)" fg:x="0" fg:w="302008728"/>
+            <text x="0.2500%" y="2313.50">&lt;frozen impo..</text>
+        </g>
+        <g>
+            <title> (302,008,728 bytes, 11.76%)</title>
+            <rect x="0.0000%" y="2322" width="11.7558%" height="21" fill="rgb(255,198,198)" fg:x="0" fg:w="302008728"/>
+            <text x="0.2500%" y="2335.50"></text>
+        </g>
+        <g>
+            <title>&lt;frozen importlib._bootstrap&gt;:1006 (_find_and_load_unlocked) (302,008,728 bytes, 11.76%)</title>
+            <rect x="0.0000%" y="2344" width="11.7558%" height="21" fill="rgb(255,198,198)" fg:x="0" fg:w="302008728"/>
+            <text x="0.2500%" y="2357.50">&lt;frozen impo..</text>
+        </g>
+        <g>
+            <title> (302,008,728 bytes, 11.76%)</title>
+            <rect x="0.0000%" y="2366" width="11.7558%" height="21" fill="rgb(255,198,198)" fg:x="0" fg:w="302008728"/>
+            <text x="0.2500%" y="2379.50"></text>
+        </g>
+        <g>
+            <title>&lt;frozen importlib._bootstrap&gt;:1027 (_find_and_load) (302,008,728 bytes, 11.76%)</title>
+            <rect x="0.0000%" y="2388" width="11.7558%" height="21" fill="rgb(255,198,198)" fg:x="0" fg:w="302008728"/>
+            <text x="0.2500%" y="2401.50">&lt;frozen impo..</text>
+        </g>
+        <g>
+            <title>from dask.array.chunk_types import is_valid_array_chunk, is_valid_chunk_type (302,008,728 bytes, 11.76%)</title>
+            <rect x="0.0000%" y="2410" width="11.7558%" height="21" fill="rgb(255,198,198)" fg:x="0" fg:w="302008728"/>
+            <text x="0.2500%" y="2423.50">from dask.a..</text>
+        </g>
+        <g>
+            <title>/Users/agpe/.pyenv/versions/3.10.7/lib/python3.10/site-packages/dask/array/core.py:37 (&lt;module&gt;) (302,008,728 bytes, 11.76%)</title>
+            <rect x="0.0000%" y="2432" width="11.7558%" height="21" fill="rgb(255,198,198)" fg:x="0" fg:w="302008728"/>
+            <text x="0.2500%" y="2445.50">/Users/agpe/..</text>
+        </g>
+        <g>
+            <title> (302,008,728 bytes, 11.76%)</title>
+            <rect x="0.0000%" y="2454" width="11.7558%" height="21" fill="rgb(255,198,198)" fg:x="0" fg:w="302008728"/>
+            <text x="0.2500%" y="2467.50"></text>
+        </g>
+        <g>
+            <title>&lt;frozen importlib._bootstrap&gt;:241 (_call_with_frames_removed) (302,008,728 bytes, 11.76%)</title>
+            <rect x="0.0000%" y="2476" width="11.7558%" height="21" fill="rgb(255,198,198)" fg:x="0" fg:w="302008728"/>
+            <text x="0.2500%" y="2489.50">&lt;frozen impo..</text>
+        </g>
+        <g>
+            <title> (302,008,728 bytes, 11.76%)</title>
+            <rect x="0.0000%" y="2498" width="11.7558%" height="21" fill="rgb(255,198,198)" fg:x="0" fg:w="302008728"/>
+            <text x="0.2500%" y="2511.50"></text>
+        </g>
+        <g>
+            <title>&lt;frozen importlib._bootstrap_external&gt;:883 (exec_module) (302,008,728 bytes, 11.76%)</title>
+            <rect x="0.0000%" y="2520" width="11.7558%" height="21" fill="rgb(255,198,198)" fg:x="0" fg:w="302008728"/>
+            <text x="0.2500%" y="2533.50">&lt;frozen impo..</text>
+        </g>
+        <g>
+            <title> (302,008,728 bytes, 11.76%)</title>
+            <rect x="0.0000%" y="2542" width="11.7558%" height="21" fill="rgb(255,198,198)" fg:x="0" fg:w="302008728"/>
+            <text x="0.2500%" y="2555.50"></text>
+        </g>
+        <g>
+            <title>&lt;frozen importlib._bootstrap&gt;:688 (_load_unlocked) (302,008,728 bytes, 11.76%)</title>
+            <rect x="0.0000%" y="2564" width="11.7558%" height="21" fill="rgb(255,198,198)" fg:x="0" fg:w="302008728"/>
+            <text x="0.2500%" y="2577.50">&lt;frozen impo..</text>
+        </g>
+        <g>
+            <title> (302,008,728 bytes, 11.76%)</title>
+            <rect x="0.0000%" y="2586" width="11.7558%" height="21" fill="rgb(255,198,198)" fg:x="0" fg:w="302008728"/>
+            <text x="0.2500%" y="2599.50"></text>
+        </g>
+        <g>
+            <title>&lt;frozen importlib._bootstrap&gt;:1006 (_find_and_load_unlocked) (302,008,728 bytes, 11.76%)</title>
+            <rect x="0.0000%" y="2608" width="11.7558%" height="21" fill="rgb(255,198,198)" fg:x="0" fg:w="302008728"/>
+            <text x="0.2500%" y="2621.50">&lt;frozen impo..</text>
+        </g>
+        <g>
+            <title> (302,008,728 bytes, 11.76%)</title>
+            <rect x="0.0000%" y="2630" width="11.7558%" height="21" fill="rgb(255,198,198)" fg:x="0" fg:w="302008728"/>
+            <text x="0.2500%" y="2643.50"></text>
+        </g>
+        <g>
+            <title>&lt;frozen importlib._bootstrap&gt;:1027 (_find_and_load) (302,008,728 bytes, 11.76%)</title>
+            <rect x="0.0000%" y="2652" width="11.7558%" height="21" fill="rgb(255,198,198)" fg:x="0" fg:w="302008728"/>
+            <text x="0.2500%" y="2665.50">&lt;frozen impo..</text>
+        </g>
+        <g>
+            <title>from dask.array.core import Array (302,008,728 bytes, 11.76%)</title>
+            <rect x="0.0000%" y="2674" width="11.7558%" height="21" fill="rgb(255,198,198)" fg:x="0" fg:w="302008728"/>
+            <text x="0.2500%" y="2687.50">from dask.a..</text>
+        </g>
+        <g>
+            <title>/Users/agpe/.pyenv/versions/3.10.7/lib/python3.10/site-packages/dask/array/percentile.py:9 (&lt;module&gt;) (302,008,728 bytes, 11.76%)</title>
+            <rect x="0.0000%" y="2696" width="11.7558%" height="21" fill="rgb(255,198,198)" fg:x="0" fg:w="302008728"/>
+            <text x="0.2500%" y="2709.50">/Users/agpe/..</text>
+        </g>
+        <g>
+            <title> (302,008,728 bytes, 11.76%)</title>
+            <rect x="0.0000%" y="2718" width="11.7558%" height="21" fill="rgb(255,198,198)" fg:x="0" fg:w="302008728"/>
+            <text x="0.2500%" y="2731.50"></text>
+        </g>
+        <g>
+            <title>&lt;frozen importlib._bootstrap&gt;:241 (_call_with_frames_removed) (302,008,728 bytes, 11.76%)</title>
+            <rect x="0.0000%" y="2740" width="11.7558%" height="21" fill="rgb(255,198,198)" fg:x="0" fg:w="302008728"/>
+            <text x="0.2500%" y="2753.50">&lt;frozen impo..</text>
+        </g>
+        <g>
+            <title> (302,008,728 bytes, 11.76%)</title>
+            <rect x="0.0000%" y="2762" width="11.7558%" height="21" fill="rgb(255,198,198)" fg:x="0" fg:w="302008728"/>
+            <text x="0.2500%" y="2775.50"></text>
+        </g>
+        <g>
+            <title>&lt;frozen importlib._bootstrap_external&gt;:883 (exec_module) (302,008,728 bytes, 11.76%)</title>
+            <rect x="0.0000%" y="2784" width="11.7558%" height="21" fill="rgb(255,198,198)" fg:x="0" fg:w="302008728"/>
+            <text x="0.2500%" y="2797.50">&lt;frozen impo..</text>
+        </g>
+        <g>
+            <title> (302,008,728 bytes, 11.76%)</title>
+            <rect x="0.0000%" y="2806" width="11.7558%" height="21" fill="rgb(255,198,198)" fg:x="0" fg:w="302008728"/>
+            <text x="0.2500%" y="2819.50"></text>
+        </g>
+        <g>
+            <title>&lt;frozen importlib._bootstrap&gt;:688 (_load_unlocked) (302,008,728 bytes, 11.76%)</title>
+            <rect x="0.0000%" y="2828" width="11.7558%" height="21" fill="rgb(255,198,198)" fg:x="0" fg:w="302008728"/>
+            <text x="0.2500%" y="2841.50">&lt;frozen impo..</text>
+        </g>
+        <g>
+            <title> (302,008,728 bytes, 11.76%)</title>
+            <rect x="0.0000%" y="2850" width="11.7558%" height="21" fill="rgb(255,198,198)" fg:x="0" fg:w="302008728"/>
+            <text x="0.2500%" y="2863.50"></text>
+        </g>
+        <g>
+            <title>&lt;frozen importlib._bootstrap&gt;:1006 (_find_and_load_unlocked) (302,008,728 bytes, 11.76%)</title>
+            <rect x="0.0000%" y="2872" width="11.7558%" height="21" fill="rgb(255,198,198)" fg:x="0" fg:w="302008728"/>
+            <text x="0.2500%" y="2885.50">&lt;frozen impo..</text>
+        </g>
+        <g>
+            <title> (302,008,728 bytes, 11.76%)</title>
+            <rect x="0.0000%" y="2894" width="11.7558%" height="21" fill="rgb(255,198,198)" fg:x="0" fg:w="302008728"/>
+            <text x="0.2500%" y="2907.50"></text>
+        </g>
+        <g>
+            <title>&lt;frozen importlib._bootstrap&gt;:1027 (_find_and_load) (302,008,728 bytes, 11.76%)</title>
+            <rect x="0.0000%" y="2916" width="11.7558%" height="21" fill="rgb(255,198,198)" fg:x="0" fg:w="302008728"/>
+            <text x="0.2500%" y="2929.50">&lt;frozen impo..</text>
+        </g>
+        <g>
+            <title>from dask.array.percentile import _percentile (302,008,728 bytes, 11.76%)</title>
+            <rect x="0.0000%" y="2938" width="11.7558%" height="21" fill="rgb(255,198,198)" fg:x="0" fg:w="302008728"/>
+            <text x="0.2500%" y="2951.50">from dask.a..</text>
+        </g>
+        <g>
+            <title>/Users/agpe/.pyenv/versions/3.10.7/lib/python3.10/site-packages/dask/array/backends.py:18 (&lt;module&gt;) (302,008,728 bytes, 11.76%)</title>
+            <rect x="0.0000%" y="2960" width="11.7558%" height="21" fill="rgb(255,198,198)" fg:x="0" fg:w="302008728"/>
+            <text x="0.2500%" y="2973.50">/Users/agpe/..</text>
+        </g>
+        <g>
+            <title> (302,008,728 bytes, 11.76%)</title>
+            <rect x="0.0000%" y="2982" width="11.7558%" height="21" fill="rgb(255,198,198)" fg:x="0" fg:w="302008728"/>
+            <text x="0.2500%" y="2995.50"></text>
+        </g>
+        <g>
+            <title>&lt;frozen importlib._bootstrap&gt;:241 (_call_with_frames_removed) (302,008,728 bytes, 11.76%)</title>
+            <rect x="0.0000%" y="3004" width="11.7558%" height="21" fill="rgb(255,198,198)" fg:x="0" fg:w="302008728"/>
+            <text x="0.2500%" y="3017.50">&lt;frozen impo..</text>
+        </g>
+        <g>
+            <title> (302,008,728 bytes, 11.76%)</title>
+            <rect x="0.0000%" y="3026" width="11.7558%" height="21" fill="rgb(255,198,198)" fg:x="0" fg:w="302008728"/>
+            <text x="0.2500%" y="3039.50"></text>
+        </g>
+        <g>
+            <title>&lt;frozen importlib._bootstrap_external&gt;:883 (exec_module) (302,008,728 bytes, 11.76%)</title>
+            <rect x="0.0000%" y="3048" width="11.7558%" height="21" fill="rgb(255,198,198)" fg:x="0" fg:w="302008728"/>
+            <text x="0.2500%" y="3061.50">&lt;frozen impo..</text>
+        </g>
+        <g>
+            <title> (302,008,728 bytes, 11.76%)</title>
+            <rect x="0.0000%" y="3070" width="11.7558%" height="21" fill="rgb(255,198,198)" fg:x="0" fg:w="302008728"/>
+            <text x="0.2500%" y="3083.50"></text>
+        </g>
+        <g>
+            <title>&lt;frozen importlib._bootstrap&gt;:688 (_load_unlocked) (302,008,728 bytes, 11.76%)</title>
+            <rect x="0.0000%" y="3092" width="11.7558%" height="21" fill="rgb(255,198,198)" fg:x="0" fg:w="302008728"/>
+            <text x="0.2500%" y="3105.50">&lt;frozen impo..</text>
+        </g>
+        <g>
+            <title> (302,008,728 bytes, 11.76%)</title>
+            <rect x="0.0000%" y="3114" width="11.7558%" height="21" fill="rgb(255,198,198)" fg:x="0" fg:w="302008728"/>
+            <text x="0.2500%" y="3127.50"></text>
+        </g>
+        <g>
+            <title>&lt;frozen importlib._bootstrap&gt;:1006 (_find_and_load_unlocked) (302,008,728 bytes, 11.76%)</title>
+            <rect x="0.0000%" y="3136" width="11.7558%" height="21" fill="rgb(255,198,198)" fg:x="0" fg:w="302008728"/>
+            <text x="0.2500%" y="3149.50">&lt;frozen impo..</text>
+        </g>
+        <g>
+            <title> (302,008,728 bytes, 11.76%)</title>
+            <rect x="0.0000%" y="3158" width="11.7558%" height="21" fill="rgb(255,198,198)" fg:x="0" fg:w="302008728"/>
+            <text x="0.2500%" y="3171.50"></text>
+        </g>
+        <g>
+            <title>&lt;frozen importlib._bootstrap&gt;:1027 (_find_and_load) (302,008,728 bytes, 11.76%)</title>
+            <rect x="0.0000%" y="3180" width="11.7558%" height="21" fill="rgb(255,198,198)" fg:x="0" fg:w="302008728"/>
+            <text x="0.2500%" y="3193.50">&lt;frozen impo..</text>
+        </g>
+        <g>
+            <title> (302,008,728 bytes, 11.76%)</title>
+            <rect x="0.0000%" y="3202" width="11.7558%" height="21" fill="rgb(255,198,198)" fg:x="0" fg:w="302008728"/>
+            <text x="0.2500%" y="3215.50"></text>
+        </g>
+        <g>
+            <title>&lt;frozen importlib._bootstrap&gt;:241 (_call_with_frames_removed) (302,008,728 bytes, 11.76%)</title>
+            <rect x="0.0000%" y="3224" width="11.7558%" height="21" fill="rgb(255,198,198)" fg:x="0" fg:w="302008728"/>
+            <text x="0.2500%" y="3237.50">&lt;frozen impo..</text>
+        </g>
+        <g>
+            <title> (302,008,728 bytes, 11.76%)</title>
+            <rect x="0.0000%" y="3246" width="11.7558%" height="21" fill="rgb(255,198,198)" fg:x="0" fg:w="302008728"/>
+            <text x="0.2500%" y="3259.50"></text>
+        </g>
+        <g>
+            <title>&lt;frozen importlib._bootstrap&gt;:1078 (_handle_fromlist) (302,008,728 bytes, 11.76%)</title>
+            <rect x="0.0000%" y="3268" width="11.7558%" height="21" fill="rgb(255,198,198)" fg:x="0" fg:w="302008728"/>
+            <text x="0.2500%" y="3281.50">&lt;frozen impo..</text>
+        </g>
+        <g>
+            <title>    from dask.array import backends, fft, lib, linalg, ma, overlap, random (302,008,728 bytes, 11.76%)</title>
+            <rect x="0.0000%" y="3290" width="11.7558%" height="21" fill="rgb(255,198,198)" fg:x="0" fg:w="302008728"/>
+            <text x="0.2500%" y="3303.50">    from da..</text>
+        </g>
+        <g>
+            <title>/Users/agpe/.pyenv/versions/3.10.7/lib/python3.10/site-packages/dask/array/__init__.py:2 (&lt;module&gt;) (302,008,728 bytes, 11.76%)</title>
+            <rect x="0.0000%" y="3312" width="11.7558%" height="21" fill="rgb(255,198,198)" fg:x="0" fg:w="302008728"/>
+            <text x="0.2500%" y="3325.50">/Users/agpe/..</text>
+        </g>
+        <g>
+            <title> (302,008,728 bytes, 11.76%)</title>
+            <rect x="0.0000%" y="3334" width="11.7558%" height="21" fill="rgb(255,198,198)" fg:x="0" fg:w="302008728"/>
+            <text x="0.2500%" y="3347.50"></text>
+        </g>
+        <g>
+            <title>&lt;frozen importlib._bootstrap&gt;:241 (_call_with_frames_removed) (302,008,728 bytes, 11.76%)</title>
+            <rect x="0.0000%" y="3356" width="11.7558%" height="21" fill="rgb(255,198,198)" fg:x="0" fg:w="302008728"/>
+            <text x="0.2500%" y="3369.50">&lt;frozen impo..</text>
+        </g>
+        <g>
+            <title> (302,008,728 bytes, 11.76%)</title>
+            <rect x="0.0000%" y="3378" width="11.7558%" height="21" fill="rgb(255,198,198)" fg:x="0" fg:w="302008728"/>
+            <text x="0.2500%" y="3391.50"></text>
+        </g>
+        <g>
+            <title>&lt;frozen importlib._bootstrap_external&gt;:883 (exec_module) (302,008,728 bytes, 11.76%)</title>
+            <rect x="0.0000%" y="3400" width="11.7558%" height="21" fill="rgb(255,198,198)" fg:x="0" fg:w="302008728"/>
+            <text x="0.2500%" y="3413.50">&lt;frozen impo..</text>
+        </g>
+        <g>
+            <title> (302,008,728 bytes, 11.76%)</title>
+            <rect x="0.0000%" y="3422" width="11.7558%" height="21" fill="rgb(255,198,198)" fg:x="0" fg:w="302008728"/>
+            <text x="0.2500%" y="3435.50"></text>
+        </g>
+        <g>
+            <title>&lt;frozen importlib._bootstrap&gt;:688 (_load_unlocked) (302,008,728 bytes, 11.76%)</title>
+            <rect x="0.0000%" y="3444" width="11.7558%" height="21" fill="rgb(255,198,198)" fg:x="0" fg:w="302008728"/>
+            <text x="0.2500%" y="3457.50">&lt;frozen impo..</text>
+        </g>
+        <g>
+            <title> (302,008,728 bytes, 11.76%)</title>
+            <rect x="0.0000%" y="3466" width="11.7558%" height="21" fill="rgb(255,198,198)" fg:x="0" fg:w="302008728"/>
+            <text x="0.2500%" y="3479.50"></text>
+        </g>
+        <g>
+            <title>&lt;frozen importlib._bootstrap&gt;:1006 (_find_and_load_unlocked) (302,008,728 bytes, 11.76%)</title>
+            <rect x="0.0000%" y="3488" width="11.7558%" height="21" fill="rgb(255,198,198)" fg:x="0" fg:w="302008728"/>
+            <text x="0.2500%" y="3501.50">&lt;frozen impo..</text>
+        </g>
+        <g>
+            <title> (302,008,728 bytes, 11.76%)</title>
+            <rect x="0.0000%" y="3510" width="11.7558%" height="21" fill="rgb(255,198,198)" fg:x="0" fg:w="302008728"/>
+            <text x="0.2500%" y="3523.50"></text>
+        </g>
+        <g>
+            <title>&lt;frozen importlib._bootstrap&gt;:1027 (_find_and_load) (302,008,728 bytes, 11.76%)</title>
+            <rect x="0.0000%" y="3532" width="11.7558%" height="21" fill="rgb(255,198,198)" fg:x="0" fg:w="302008728"/>
+            <text x="0.2500%" y="3545.50">&lt;frozen impo..</text>
+        </g>
+        <g>
+            <title> (302,008,728 bytes, 11.76%)</title>
+            <rect x="0.0000%" y="3554" width="11.7558%" height="21" fill="rgb(255,198,198)" fg:x="0" fg:w="302008728"/>
+            <text x="0.2500%" y="3567.50"></text>
+        </g>
+        <g>
+            <title>&lt;frozen importlib._bootstrap&gt;:241 (_call_with_frames_removed) (302,008,728 bytes, 11.76%)</title>
+            <rect x="0.0000%" y="3576" width="11.7558%" height="21" fill="rgb(255,198,198)" fg:x="0" fg:w="302008728"/>
+            <text x="0.2500%" y="3589.50">&lt;frozen impo..</text>
+        </g>
+        <g>
+            <title> (302,008,728 bytes, 11.76%)</title>
+            <rect x="0.0000%" y="3598" width="11.7558%" height="21" fill="rgb(255,198,198)" fg:x="0" fg:w="302008728"/>
+            <text x="0.2500%" y="3611.50"></text>
+        </g>
+        <g>
+            <title>&lt;frozen importlib._bootstrap&gt;:992 (_find_and_load_unlocked) (302,008,728 bytes, 11.76%)</title>
+            <rect x="0.0000%" y="3620" width="11.7558%" height="21" fill="rgb(255,198,198)" fg:x="0" fg:w="302008728"/>
+            <text x="0.2500%" y="3633.50">&lt;frozen impo..</text>
+        </g>
+        <g>
+            <title> (302,008,728 bytes, 11.76%)</title>
+            <rect x="0.0000%" y="3642" width="11.7558%" height="21" fill="rgb(255,198,198)" fg:x="0" fg:w="302008728"/>
+            <text x="0.2500%" y="3655.50"></text>
+        </g>
+        <g>
+            <title>&lt;frozen importlib._bootstrap&gt;:1027 (_find_and_load) (302,008,728 bytes, 11.76%)</title>
+            <rect x="0.0000%" y="3664" width="11.7558%" height="21" fill="rgb(255,198,198)" fg:x="0" fg:w="302008728"/>
+            <text x="0.2500%" y="3677.50">&lt;frozen impo..</text>
+        </g>
+        <g>
+            <title>from dask.array.core import Array (302,008,728 bytes, 11.76%)</title>
+            <rect x="0.0000%" y="3686" width="11.7558%" height="21" fill="rgb(255,198,198)" fg:x="0" fg:w="302008728"/>
+            <text x="0.2500%" y="3699.50">from dask.a..</text>
+        </g>
+        <g>
+            <title>/Users/agpe/.pyenv/versions/3.10.7/lib/python3.10/site-packages/dask/dataframe/backends.py:18 (&lt;module&gt;) (302,008,728 bytes, 11.76%)</title>
+            <rect x="0.0000%" y="3708" width="11.7558%" height="21" fill="rgb(255,198,198)" fg:x="0" fg:w="302008728"/>
+            <text x="0.2500%" y="3721.50">/Users/agpe/..</text>
+        </g>
+        <g>
+            <title> (302,008,728 bytes, 11.76%)</title>
+            <rect x="0.0000%" y="3730" width="11.7558%" height="21" fill="rgb(255,198,198)" fg:x="0" fg:w="302008728"/>
+            <text x="0.2500%" y="3743.50"></text>
+        </g>
+        <g>
+            <title>&lt;frozen importlib._bootstrap&gt;:241 (_call_with_frames_removed) (302,008,728 bytes, 11.76%)</title>
+            <rect x="0.0000%" y="3752" width="11.7558%" height="21" fill="rgb(255,198,198)" fg:x="0" fg:w="302008728"/>
+            <text x="0.2500%" y="3765.50">&lt;frozen impo..</text>
+        </g>
+        <g>
+            <title> (302,008,728 bytes, 11.76%)</title>
+            <rect x="0.0000%" y="3774" width="11.7558%" height="21" fill="rgb(255,198,198)" fg:x="0" fg:w="302008728"/>
+            <text x="0.2500%" y="3787.50"></text>
+        </g>
+        <g>
+            <title>&lt;frozen importlib._bootstrap_external&gt;:883 (exec_module) (302,008,728 bytes, 11.76%)</title>
+            <rect x="0.0000%" y="3796" width="11.7558%" height="21" fill="rgb(255,198,198)" fg:x="0" fg:w="302008728"/>
+            <text x="0.2500%" y="3809.50">&lt;frozen impo..</text>
+        </g>
+        <g>
+            <title> (302,008,728 bytes, 11.76%)</title>
+            <rect x="0.0000%" y="3818" width="11.7558%" height="21" fill="rgb(255,198,198)" fg:x="0" fg:w="302008728"/>
+            <text x="0.2500%" y="3831.50"></text>
+        </g>
+        <g>
+            <title>&lt;frozen importlib._bootstrap&gt;:688 (_load_unlocked) (302,008,728 bytes, 11.76%)</title>
+            <rect x="0.0000%" y="3840" width="11.7558%" height="21" fill="rgb(255,198,198)" fg:x="0" fg:w="302008728"/>
+            <text x="0.2500%" y="3853.50">&lt;frozen impo..</text>
+        </g>
+        <g>
+            <title> (302,008,728 bytes, 11.76%)</title>
+            <rect x="0.0000%" y="3862" width="11.7558%" height="21" fill="rgb(255,198,198)" fg:x="0" fg:w="302008728"/>
+            <text x="0.2500%" y="3875.50"></text>
+        </g>
+        <g>
+            <title>&lt;frozen importlib._bootstrap&gt;:1006 (_find_and_load_unlocked) (302,008,728 bytes, 11.76%)</title>
+            <rect x="0.0000%" y="3884" width="11.7558%" height="21" fill="rgb(255,198,198)" fg:x="0" fg:w="302008728"/>
+            <text x="0.2500%" y="3897.50">&lt;frozen impo..</text>
+        </g>
+        <g>
+            <title> (302,008,728 bytes, 11.76%)</title>
+            <rect x="0.0000%" y="3906" width="11.7558%" height="21" fill="rgb(255,198,198)" fg:x="0" fg:w="302008728"/>
+            <text x="0.2500%" y="3919.50"></text>
+        </g>
+        <g>
+            <title>&lt;frozen importlib._bootstrap&gt;:1027 (_find_and_load) (302,008,728 bytes, 11.76%)</title>
+            <rect x="0.0000%" y="3928" width="11.7558%" height="21" fill="rgb(255,198,198)" fg:x="0" fg:w="302008728"/>
+            <text x="0.2500%" y="3941.50">&lt;frozen impo..</text>
+        </g>
+        <g>
+            <title> (302,008,728 bytes, 11.76%)</title>
+            <rect x="0.0000%" y="3950" width="11.7558%" height="21" fill="rgb(255,198,198)" fg:x="0" fg:w="302008728"/>
+            <text x="0.2500%" y="3963.50"></text>
+        </g>
+        <g>
+            <title>&lt;frozen importlib._bootstrap&gt;:241 (_call_with_frames_removed) (302,008,728 bytes, 11.76%)</title>
+            <rect x="0.0000%" y="3972" width="11.7558%" height="21" fill="rgb(255,198,198)" fg:x="0" fg:w="302008728"/>
+            <text x="0.2500%" y="3985.50">&lt;frozen impo..</text>
+        </g>
+        <g>
+            <title> (302,008,728 bytes, 11.76%)</title>
+            <rect x="0.0000%" y="3994" width="11.7558%" height="21" fill="rgb(255,198,198)" fg:x="0" fg:w="302008728"/>
+            <text x="0.2500%" y="4007.50"></text>
+        </g>
+        <g>
+            <title>&lt;frozen importlib._bootstrap&gt;:1078 (_handle_fromlist) (302,008,728 bytes, 11.76%)</title>
+            <rect x="0.0000%" y="4016" width="11.7558%" height="21" fill="rgb(255,198,198)" fg:x="0" fg:w="302008728"/>
+            <text x="0.2500%" y="4029.50">&lt;frozen impo..</text>
+        </g>
+        <g>
+            <title>    from dask.dataframe import backends, dispatch, rolling (302,008,728 bytes, 11.76%)</title>
+            <rect x="0.0000%" y="4038" width="11.7558%" height="21" fill="rgb(255,198,198)" fg:x="0" fg:w="302008728"/>
+            <text x="0.2500%" y="4051.50">    from da..</text>
+        </g>
+        <g>
+            <title>/Users/agpe/.pyenv/versions/3.10.7/lib/python3.10/site-packages/dask/dataframe/__init__.py:4 (&lt;module&gt;) (302,008,728 bytes, 11.76%)</title>
+            <rect x="0.0000%" y="4060" width="11.7558%" height="21" fill="rgb(255,198,198)" fg:x="0" fg:w="302008728"/>
+            <text x="0.2500%" y="4073.50">/Users/agpe/..</text>
+        </g>
+        <g>
+            <title> (302,008,728 bytes, 11.76%)</title>
+            <rect x="0.0000%" y="4082" width="11.7558%" height="21" fill="rgb(255,198,198)" fg:x="0" fg:w="302008728"/>
+            <text x="0.2500%" y="4095.50"></text>
+        </g>
+        <g>
+            <title>&lt;frozen importlib._bootstrap&gt;:241 (_call_with_frames_removed) (302,008,728 bytes, 11.76%)</title>
+            <rect x="0.0000%" y="4104" width="11.7558%" height="21" fill="rgb(255,198,198)" fg:x="0" fg:w="302008728"/>
+            <text x="0.2500%" y="4117.50">&lt;frozen impo..</text>
+        </g>
+        <g>
+            <title> (302,008,728 bytes, 11.76%)</title>
+            <rect x="0.0000%" y="4126" width="11.7558%" height="21" fill="rgb(255,198,198)" fg:x="0" fg:w="302008728"/>
+            <text x="0.2500%" y="4139.50"></text>
+        </g>
+        <g>
+            <title>&lt;frozen importlib._bootstrap_external&gt;:883 (exec_module) (302,008,728 bytes, 11.76%)</title>
+            <rect x="0.0000%" y="4148" width="11.7558%" height="21" fill="rgb(255,198,198)" fg:x="0" fg:w="302008728"/>
+            <text x="0.2500%" y="4161.50">&lt;frozen impo..</text>
+        </g>
+        <g>
+            <title> (302,008,728 bytes, 11.76%)</title>
+            <rect x="0.0000%" y="4170" width="11.7558%" height="21" fill="rgb(255,198,198)" fg:x="0" fg:w="302008728"/>
+            <text x="0.2500%" y="4183.50"></text>
+        </g>
+        <g>
+            <title>&lt;frozen importlib._bootstrap&gt;:688 (_load_unlocked) (302,008,728 bytes, 11.76%)</title>
+            <rect x="0.0000%" y="4192" width="11.7558%" height="21" fill="rgb(255,198,198)" fg:x="0" fg:w="302008728"/>
+            <text x="0.2500%" y="4205.50">&lt;frozen impo..</text>
+        </g>
+        <g>
+            <title> (302,008,728 bytes, 11.76%)</title>
+            <rect x="0.0000%" y="4214" width="11.7558%" height="21" fill="rgb(255,198,198)" fg:x="0" fg:w="302008728"/>
+            <text x="0.2500%" y="4227.50"></text>
+        </g>
+        <g>
+            <title>&lt;frozen importlib._bootstrap&gt;:1006 (_find_and_load_unlocked) (302,008,728 bytes, 11.76%)</title>
+            <rect x="0.0000%" y="4236" width="11.7558%" height="21" fill="rgb(255,198,198)" fg:x="0" fg:w="302008728"/>
+            <text x="0.2500%" y="4249.50">&lt;frozen impo..</text>
+        </g>
+        <g>
+            <title> (302,008,728 bytes, 11.76%)</title>
+            <rect x="0.0000%" y="4258" width="11.7558%" height="21" fill="rgb(255,198,198)" fg:x="0" fg:w="302008728"/>
+            <text x="0.2500%" y="4271.50"></text>
+        </g>
+        <g>
+            <title>&lt;frozen importlib._bootstrap&gt;:1027 (_find_and_load) (302,008,728 bytes, 11.76%)</title>
+            <rect x="0.0000%" y="4280" width="11.7558%" height="21" fill="rgb(255,198,198)" fg:x="0" fg:w="302008728"/>
+            <text x="0.2500%" y="4293.50">&lt;frozen impo..</text>
+        </g>
+        <g>
+            <title>import dask.dataframe as dd (302,008,728 bytes, 11.76%)</title>
+            <rect x="0.0000%" y="4302" width="11.7558%" height="21" fill="rgb(255,198,198)" fg:x="0" fg:w="302008728"/>
+            <text x="0.2500%" y="4315.50">import dask..</text>
+        </g>
+        <g>
+            <title>tmp_memorytest.py:1 (&lt;module&gt;) (302,008,728 bytes, 11.76%)</title>
+            <rect x="0.0000%" y="4324" width="11.7558%" height="21" fill="rgb(255,198,198)" fg:x="0" fg:w="302008728"/>
+            <text x="0.2500%" y="4337.50">tmp_memoryte..</text>
+        </g>
+        <g>
+            <title> (302,180,189 bytes, 11.76%)</title>
+            <rect x="0.0000%" y="386" width="11.7625%" height="21" fill="rgb(255,198,198)" fg:x="0" fg:w="302180189"/>
+            <text x="0.2500%" y="399.50"></text>
+        </g>
+        <g>
+            <title>&lt;frozen importlib._bootstrap&gt;:241 (_call_with_frames_removed) (302,180,189 bytes, 11.76%)</title>
+            <rect x="0.0000%" y="408" width="11.7625%" height="21" fill="rgb(255,198,198)" fg:x="0" fg:w="302180189"/>
+            <text x="0.2500%" y="421.50">&lt;frozen impo..</text>
+        </g>
+        <g>
+            <title> (302,180,189 bytes, 11.76%)</title>
+            <rect x="0.0000%" y="430" width="11.7625%" height="21" fill="rgb(255,198,198)" fg:x="0" fg:w="302180189"/>
+            <text x="0.2500%" y="443.50"></text>
+        </g>
+        <g>
+            <title>&lt;frozen importlib._bootstrap&gt;:1078 (_handle_fromlist) (302,180,189 bytes, 11.76%)</title>
+            <rect x="0.0000%" y="452" width="11.7625%" height="21" fill="rgb(255,198,198)" fg:x="0" fg:w="302180189"/>
+            <text x="0.2500%" y="465.50">&lt;frozen impo..</text>
+        </g>
+        <g>
+            <title>&lt;frozen importlib._bootstrap_external&gt;:1176 (create_module) (302,326,566 bytes, 11.77%)</title>
+            <rect x="0.0000%" y="188" width="11.7682%" height="21" fill="rgb(255,198,198)" fg:x="0" fg:w="302326566"/>
+            <text x="0.2500%" y="201.50">&lt;frozen impo..</text>
+        </g>
+        <g>
+            <title> (302,326,566 bytes, 11.77%)</title>
+            <rect x="0.0000%" y="210" width="11.7682%" height="21" fill="rgb(255,198,198)" fg:x="0" fg:w="302326566"/>
+            <text x="0.2500%" y="223.50"></text>
+        </g>
+        <g>
+            <title>&lt;frozen importlib._bootstrap&gt;:571 (module_from_spec) (302,326,566 bytes, 11.77%)</title>
+            <rect x="0.0000%" y="232" width="11.7682%" height="21" fill="rgb(255,198,198)" fg:x="0" fg:w="302326566"/>
+            <text x="0.2500%" y="245.50">&lt;frozen impo..</text>
+        </g>
+        <g>
+            <title> (302,326,566 bytes, 11.77%)</title>
+            <rect x="0.0000%" y="254" width="11.7682%" height="21" fill="rgb(255,198,198)" fg:x="0" fg:w="302326566"/>
+            <text x="0.2500%" y="267.50"></text>
+        </g>
+        <g>
+            <title>&lt;frozen importlib._bootstrap&gt;:674 (_load_unlocked) (302,326,566 bytes, 11.77%)</title>
+            <rect x="0.0000%" y="276" width="11.7682%" height="21" fill="rgb(255,198,198)" fg:x="0" fg:w="302326566"/>
+            <text x="0.2500%" y="289.50">&lt;frozen impo..</text>
+        </g>
+        <g>
+            <title> (302,326,566 bytes, 11.77%)</title>
+            <rect x="0.0000%" y="298" width="11.7682%" height="21" fill="rgb(255,198,198)" fg:x="0" fg:w="302326566"/>
+            <text x="0.2500%" y="311.50"></text>
+        </g>
+        <g>
+            <title>&lt;frozen importlib._bootstrap&gt;:1006 (_find_and_load_unlocked) (302,326,566 bytes, 11.77%)</title>
+            <rect x="0.0000%" y="320" width="11.7682%" height="21" fill="rgb(255,198,198)" fg:x="0" fg:w="302326566"/>
+            <text x="0.2500%" y="333.50">&lt;frozen impo..</text>
+        </g>
+        <g>
+            <title> (302,326,566 bytes, 11.77%)</title>
+            <rect x="0.0000%" y="342" width="11.7682%" height="21" fill="rgb(255,198,198)" fg:x="0" fg:w="302326566"/>
+            <text x="0.2500%" y="355.50"></text>
+        </g>
+        <g>
+            <title>&lt;frozen importlib._bootstrap&gt;:1027 (_find_and_load) (302,326,566 bytes, 11.77%)</title>
+            <rect x="0.0000%" y="364" width="11.7682%" height="21" fill="rgb(255,198,198)" fg:x="0" fg:w="302326566"/>
+            <text x="0.2500%" y="377.50">&lt;frozen impo..</text>
+        </g>
+        <g>
+            <title>&lt;frozen importlib._bootstrap&gt;:241 (_call_with_frames_removed) (306,019,714 bytes, 11.91%)</title>
+            <rect x="0.0000%" y="144" width="11.9119%" height="21" fill="rgb(255,198,198)" fg:x="0" fg:w="306019714"/>
+            <text x="0.2500%" y="157.50">&lt;frozen impor..</text>
+        </g>
+        <g>
+            <title> (306,019,714 bytes, 11.91%)</title>
+            <rect x="0.0000%" y="166" width="11.9119%" height="21" fill="rgb(255,198,198)" fg:x="0" fg:w="306019714"/>
+            <text x="0.2500%" y="179.50"></text>
+        </g>
+        <g>
+            <title> (318,333,562 bytes, 12.39%)</title>
+            <rect x="0.0000%" y="122" width="12.3912%" height="21" fill="rgb(255,197,197)" fg:x="0" fg:w="318333562"/>
+            <text x="0.2500%" y="135.50"></text>
+        </g>
+        <g>
+            <title>&lt;frozen importlib._bootstrap_external&gt;:672 (_compile_bytecode) (12,240,096 bytes, 0.48%)</title>
+            <rect x="11.9148%" y="144" width="0.4764%" height="21" fill="rgb(255,239,239)" fg:x="306093466" fg:w="12240096"/>
+            <text x="12.1648%" y="157.50"></text>
+        </g>
+        <g>
+            <title> (12,240,096 bytes, 0.48%)</title>
+            <rect x="11.9148%" y="166" width="0.4764%" height="21" fill="rgb(255,239,239)" fg:x="306093466" fg:w="12240096"/>
+            <text x="12.1648%" y="179.50"></text>
+        </g>
+        <g>
+            <title>&lt;frozen importlib._bootstrap_external&gt;:1012 (get_code) (12,240,096 bytes, 0.48%)</title>
+            <rect x="11.9148%" y="188" width="0.4764%" height="21" fill="rgb(255,239,239)" fg:x="306093466" fg:w="12240096"/>
+            <text x="12.1648%" y="201.50"></text>
+        </g>
+        <g>
+            <title> (12,240,096 bytes, 0.48%)</title>
+            <rect x="11.9148%" y="210" width="0.4764%" height="21" fill="rgb(255,239,239)" fg:x="306093466" fg:w="12240096"/>
+            <text x="12.1648%" y="223.50"></text>
+        </g>
+        <g>
+            <title>&lt;frozen importlib._bootstrap_external&gt;:879 (exec_module) (12,240,096 bytes, 0.48%)</title>
+            <rect x="11.9148%" y="232" width="0.4764%" height="21" fill="rgb(255,239,239)" fg:x="306093466" fg:w="12240096"/>
+            <text x="12.1648%" y="245.50"></text>
+        </g>
+        <g>
+            <title> (12,240,096 bytes, 0.48%)</title>
+            <rect x="11.9148%" y="254" width="0.4764%" height="21" fill="rgb(255,239,239)" fg:x="306093466" fg:w="12240096"/>
+            <text x="12.1648%" y="267.50"></text>
+        </g>
+        <g>
+            <title>&lt;frozen importlib._bootstrap&gt;:688 (_load_unlocked) (12,240,096 bytes, 0.48%)</title>
+            <rect x="11.9148%" y="276" width="0.4764%" height="21" fill="rgb(255,239,239)" fg:x="306093466" fg:w="12240096"/>
+            <text x="12.1648%" y="289.50"></text>
+        </g>
+        <g>
+            <title> (12,240,096 bytes, 0.48%)</title>
+            <rect x="11.9148%" y="298" width="0.4764%" height="21" fill="rgb(255,239,239)" fg:x="306093466" fg:w="12240096"/>
+            <text x="12.1648%" y="311.50"></text>
+        </g>
+        <g>
+            <title>&lt;frozen importlib._bootstrap&gt;:1006 (_find_and_load_unlocked) (12,240,096 bytes, 0.48%)</title>
+            <rect x="11.9148%" y="320" width="0.4764%" height="21" fill="rgb(255,239,239)" fg:x="306093466" fg:w="12240096"/>
+            <text x="12.1648%" y="333.50"></text>
+        </g>
+        <g>
+            <title> (12,240,096 bytes, 0.48%)</title>
+            <rect x="11.9148%" y="342" width="0.4764%" height="21" fill="rgb(255,239,239)" fg:x="306093466" fg:w="12240096"/>
+            <text x="12.1648%" y="355.50"></text>
+        </g>
+        <g>
+            <title>&lt;frozen importlib._bootstrap&gt;:1027 (_find_and_load) (12,240,096 bytes, 0.48%)</title>
+            <rect x="11.9148%" y="364" width="0.4764%" height="21" fill="rgb(255,239,239)" fg:x="306093466" fg:w="12240096"/>
+            <text x="12.1648%" y="377.50"></text>
+        </g>
+        <g>
+            <title>    bio.write(b) (644,293,683 bytes, 25.08%)</title>
+            <rect x="12.3941%" y="122" width="25.0794%" height="21" fill="rgb(255,174,174)" fg:x="318407954" fg:w="644293683"/>
+            <text x="12.6441%" y="135.50">    bio.write(b)</text>
+        </g>
+        <g>
+            <title>/Users/agpe/.pyenv/versions/3.10.7/lib/python3.10/site-packages/dask/dataframe/io/csv.py:192 (pandas_read_text) (644,293,683 bytes, 25.08%)</title>
+            <rect x="12.3941%" y="144" width="25.0794%" height="21" fill="rgb(255,174,174)" fg:x="318407954" fg:w="644293683"/>
+            <text x="12.6441%" y="157.50">/Users/agpe/.pyenv/versions/3..</text>
+        </g>
+        <g>
+            <title>        df = pandas_read_text( (644,293,683 bytes, 25.08%)</title>
+            <rect x="12.3941%" y="166" width="25.0794%" height="21" fill="rgb(255,174,174)" fg:x="318407954" fg:w="644293683"/>
+            <text x="12.6441%" y="179.50">        df = pandas_read_tex..</text>
+        </g>
+        <g>
+            <title>/Users/agpe/.pyenv/versions/3.10.7/lib/python3.10/site-packages/dask/dataframe/io/csv.py:141 (__call__) (644,293,683 bytes, 25.08%)</title>
+            <rect x="12.3941%" y="188" width="25.0794%" height="21" fill="rgb(255,174,174)" fg:x="318407954" fg:w="644293683"/>
+            <text x="12.6441%" y="201.50">/Users/agpe/.pyenv/versions/3..</text>
+        </g>
+        <g>
+            <title>        return func(*(_execute_task(a, cache) for a in args)) (644,293,683 bytes, 25.08%)</title>
+            <rect x="12.3941%" y="210" width="25.0794%" height="21" fill="rgb(255,174,174)" fg:x="318407954" fg:w="644293683"/>
+            <text x="12.6441%" y="223.50">        return func(*(_execu..</text>
+        </g>
+        <g>
+            <title>/Users/agpe/.pyenv/versions/3.10.7/lib/python3.10/site-packages/dask/core.py:119 (_execute_task) (644,293,683 bytes, 25.08%)</title>
+            <rect x="12.3941%" y="232" width="25.0794%" height="21" fill="rgb(255,174,174)" fg:x="318407954" fg:w="644293683"/>
+            <text x="12.6441%" y="245.50">/Users/agpe/.pyenv/versions/3..</text>
+        </g>
+        <g>
+            <title>        return func(*(_execute_task(a, cache) for a in args)) (644,293,683 bytes, 25.08%)</title>
+            <rect x="12.3941%" y="254" width="25.0794%" height="21" fill="rgb(255,174,174)" fg:x="318407954" fg:w="644293683"/>
+            <text x="12.6441%" y="267.50">        return func(*(_execu..</text>
+        </g>
+        <g>
+            <title>/Users/agpe/.pyenv/versions/3.10.7/lib/python3.10/site-packages/dask/core.py:119 (&lt;genexpr&gt;) (644,293,683 bytes, 25.08%)</title>
+            <rect x="12.3941%" y="276" width="25.0794%" height="21" fill="rgb(255,174,174)" fg:x="318407954" fg:w="644293683"/>
+            <text x="12.6441%" y="289.50">/Users/agpe/.pyenv/versions/3..</text>
+        </g>
+        <g>
+            <title>        return func(*(_execute_task(a, cache) for a in args)) (644,293,683 bytes, 25.08%)</title>
+            <rect x="12.3941%" y="298" width="25.0794%" height="21" fill="rgb(255,174,174)" fg:x="318407954" fg:w="644293683"/>
+            <text x="12.6441%" y="311.50">        return func(*(_execu..</text>
+        </g>
+        <g>
+            <title>/Users/agpe/.pyenv/versions/3.10.7/lib/python3.10/site-packages/dask/core.py:119 (_execute_task) (644,293,683 bytes, 25.08%)</title>
+            <rect x="12.3941%" y="320" width="25.0794%" height="21" fill="rgb(255,174,174)" fg:x="318407954" fg:w="644293683"/>
+            <text x="12.6441%" y="333.50">/Users/agpe/.pyenv/versions/3..</text>
+        </g>
+        <g>
+            <title>        return [_execute_task(a, cache) for a in arg] (644,293,683 bytes, 25.08%)</title>
+            <rect x="12.3941%" y="342" width="25.0794%" height="21" fill="rgb(255,174,174)" fg:x="318407954" fg:w="644293683"/>
+            <text x="12.6441%" y="355.50">        return [_execute_tas..</text>
+        </g>
+        <g>
+            <title>/Users/agpe/.pyenv/versions/3.10.7/lib/python3.10/site-packages/dask/core.py:113 (&lt;listcomp&gt;) (644,293,683 bytes, 25.08%)</title>
+            <rect x="12.3941%" y="364" width="25.0794%" height="21" fill="rgb(255,174,174)" fg:x="318407954" fg:w="644293683"/>
+            <text x="12.6441%" y="377.50">/Users/agpe/.pyenv/versions/3..</text>
+        </g>
+        <g>
+            <title>        return [_execute_task(a, cache) for a in arg] (644,293,683 bytes, 25.08%)</title>
+            <rect x="12.3941%" y="386" width="25.0794%" height="21" fill="rgb(255,174,174)" fg:x="318407954" fg:w="644293683"/>
+            <text x="12.6441%" y="399.50">        return [_execute_tas..</text>
+        </g>
+        <g>
+            <title>/Users/agpe/.pyenv/versions/3.10.7/lib/python3.10/site-packages/dask/core.py:113 (_execute_task) (644,293,683 bytes, 25.08%)</title>
+            <rect x="12.3941%" y="408" width="25.0794%" height="21" fill="rgb(255,174,174)" fg:x="318407954" fg:w="644293683"/>
+            <text x="12.6441%" y="421.50">/Users/agpe/.pyenv/versions/3..</text>
+        </g>
+        <g>
+            <title>        return func(*(_execute_task(a, cache) for a in args)) (644,293,683 bytes, 25.08%)</title>
+            <rect x="12.3941%" y="430" width="25.0794%" height="21" fill="rgb(255,174,174)" fg:x="318407954" fg:w="644293683"/>
+            <text x="12.6441%" y="443.50">        return func(*(_execu..</text>
+        </g>
+        <g>
+            <title>/Users/agpe/.pyenv/versions/3.10.7/lib/python3.10/site-packages/dask/core.py:119 (&lt;genexpr&gt;) (644,293,683 bytes, 25.08%)</title>
+            <rect x="12.3941%" y="452" width="25.0794%" height="21" fill="rgb(255,174,174)" fg:x="318407954" fg:w="644293683"/>
+            <text x="12.6441%" y="465.50">/Users/agpe/.pyenv/versions/3..</text>
+        </g>
+        <g>
+            <title>        return func(*(_execute_task(a, cache) for a in args)) (644,293,683 bytes, 25.08%)</title>
+            <rect x="12.3941%" y="474" width="25.0794%" height="21" fill="rgb(255,174,174)" fg:x="318407954" fg:w="644293683"/>
+            <text x="12.6441%" y="487.50">        return func(*(_execu..</text>
+        </g>
+        <g>
+            <title>/Users/agpe/.pyenv/versions/3.10.7/lib/python3.10/site-packages/dask/core.py:119 (_execute_task) (644,293,683 bytes, 25.08%)</title>
+            <rect x="12.3941%" y="496" width="25.0794%" height="21" fill="rgb(255,174,174)" fg:x="318407954" fg:w="644293683"/>
+            <text x="12.6441%" y="509.50">/Users/agpe/.pyenv/versions/3..</text>
+        </g>
+        <g>
+            <title>        return [_execute_task(a, cache) for a in arg] (644,293,683 bytes, 25.08%)</title>
+            <rect x="12.3941%" y="518" width="25.0794%" height="21" fill="rgb(255,174,174)" fg:x="318407954" fg:w="644293683"/>
+            <text x="12.6441%" y="531.50">        return [_execute_tas..</text>
+        </g>
+        <g>
+            <title>/Users/agpe/.pyenv/versions/3.10.7/lib/python3.10/site-packages/dask/core.py:113 (&lt;listcomp&gt;) (644,293,683 bytes, 25.08%)</title>
+            <rect x="12.3941%" y="540" width="25.0794%" height="21" fill="rgb(255,174,174)" fg:x="318407954" fg:w="644293683"/>
+            <text x="12.6441%" y="553.50">/Users/agpe/.pyenv/versions/3..</text>
+        </g>
+        <g>
+            <title>        return [_execute_task(a, cache) for a in arg] (644,293,683 bytes, 25.08%)</title>
+            <rect x="12.3941%" y="562" width="25.0794%" height="21" fill="rgb(255,174,174)" fg:x="318407954" fg:w="644293683"/>
+            <text x="12.6441%" y="575.50">        return [_execute_tas..</text>
+        </g>
+        <g>
+            <title>/Users/agpe/.pyenv/versions/3.10.7/lib/python3.10/site-packages/dask/core.py:113 (_execute_task) (644,293,683 bytes, 25.08%)</title>
+            <rect x="12.3941%" y="584" width="25.0794%" height="21" fill="rgb(255,174,174)" fg:x="318407954" fg:w="644293683"/>
+            <text x="12.6441%" y="597.50">/Users/agpe/.pyenv/versions/3..</text>
+        </g>
+        <g>
+            <title>        return func(*(_execute_task(a, cache) for a in args)) (644,293,683 bytes, 25.08%)</title>
+            <rect x="12.3941%" y="606" width="25.0794%" height="21" fill="rgb(255,174,174)" fg:x="318407954" fg:w="644293683"/>
+            <text x="12.6441%" y="619.50">        return func(*(_execu..</text>
+        </g>
+        <g>
+            <title>/Users/agpe/.pyenv/versions/3.10.7/lib/python3.10/site-packages/dask/core.py:119 (&lt;genexpr&gt;) (644,293,683 bytes, 25.08%)</title>
+            <rect x="12.3941%" y="628" width="25.0794%" height="21" fill="rgb(255,174,174)" fg:x="318407954" fg:w="644293683"/>
+            <text x="12.6441%" y="641.50">/Users/agpe/.pyenv/versions/3..</text>
+        </g>
+        <g>
+            <title>        return func(*(_execute_task(a, cache) for a in args)) (644,293,683 bytes, 25.08%)</title>
+            <rect x="12.3941%" y="650" width="25.0794%" height="21" fill="rgb(255,174,174)" fg:x="318407954" fg:w="644293683"/>
+            <text x="12.6441%" y="663.50">        return func(*(_execu..</text>
+        </g>
+        <g>
+            <title>/Users/agpe/.pyenv/versions/3.10.7/lib/python3.10/site-packages/dask/core.py:119 (_execute_task) (644,293,683 bytes, 25.08%)</title>
+            <rect x="12.3941%" y="672" width="25.0794%" height="21" fill="rgb(255,174,174)" fg:x="318407954" fg:w="644293683"/>
+            <text x="12.6441%" y="685.50">/Users/agpe/.pyenv/versions/3..</text>
+        </g>
+        <g>
+            <title>        result = _execute_task(task, cache) (644,293,683 bytes, 25.08%)</title>
+            <rect x="12.3941%" y="694" width="25.0794%" height="21" fill="rgb(255,174,174)" fg:x="318407954" fg:w="644293683"/>
+            <text x="12.6441%" y="707.50">        result = _execute_ta..</text>
+        </g>
+        <g>
+            <title>/Users/agpe/.pyenv/versions/3.10.7/lib/python3.10/site-packages/dask/core.py:149 (get) (644,293,683 bytes, 25.08%)</title>
+            <rect x="12.3941%" y="716" width="25.0794%" height="21" fill="rgb(255,174,174)" fg:x="318407954" fg:w="644293683"/>
+            <text x="12.6441%" y="729.50">/Users/agpe/.pyenv/versions/3..</text>
+        </g>
+        <g>
+            <title>        return core.get(self.dsk, self.outkey, dict(zip(self.inkeys, args))) (644,293,683 bytes, 25.08%)</title>
+            <rect x="12.3941%" y="738" width="25.0794%" height="21" fill="rgb(255,174,174)" fg:x="318407954" fg:w="644293683"/>
+            <text x="12.6441%" y="751.50">        return core.get(self..</text>
+        </g>
+        <g>
+            <title>/Users/agpe/.pyenv/versions/3.10.7/lib/python3.10/site-packages/dask/optimization.py:990 (__call__) (644,293,683 bytes, 25.08%)</title>
+            <rect x="12.3941%" y="760" width="25.0794%" height="21" fill="rgb(255,174,174)" fg:x="318407954" fg:w="644293683"/>
+            <text x="12.6441%" y="773.50">/Users/agpe/.pyenv/versions/3..</text>
+        </g>
+        <g>
+            <title>        return func(*(_execute_task(a, cache) for a in args)) (644,293,683 bytes, 25.08%)</title>
+            <rect x="12.3941%" y="782" width="25.0794%" height="21" fill="rgb(255,174,174)" fg:x="318407954" fg:w="644293683"/>
+            <text x="12.6441%" y="795.50">        return func(*(_execu..</text>
+        </g>
+        <g>
+            <title>/Users/agpe/.pyenv/versions/3.10.7/lib/python3.10/site-packages/dask/core.py:119 (_execute_task) (644,293,683 bytes, 25.08%)</title>
+            <rect x="12.3941%" y="804" width="25.0794%" height="21" fill="rgb(255,174,174)" fg:x="318407954" fg:w="644293683"/>
+            <text x="12.6441%" y="817.50">/Users/agpe/.pyenv/versions/3..</text>
+        </g>
+        <g>
+            <title>        result = _execute_task(task, data) (644,293,683 bytes, 25.08%)</title>
+            <rect x="12.3941%" y="826" width="25.0794%" height="21" fill="rgb(255,174,174)" fg:x="318407954" fg:w="644293683"/>
+            <text x="12.6441%" y="839.50">        result = _execute_ta..</text>
+        </g>
+        <g>
+            <title>/Users/agpe/.pyenv/versions/3.10.7/lib/python3.10/site-packages/dask/local.py:224 (execute_task) (644,293,683 bytes, 25.08%)</title>
+            <rect x="12.3941%" y="848" width="25.0794%" height="21" fill="rgb(255,174,174)" fg:x="318407954" fg:w="644293683"/>
+            <text x="12.6441%" y="861.50">/Users/agpe/.pyenv/versions/3..</text>
+        </g>
+        <g>
+            <title>    return [execute_task(*a) for a in it] (644,293,683 bytes, 25.08%)</title>
+            <rect x="12.3941%" y="870" width="25.0794%" height="21" fill="rgb(255,174,174)" fg:x="318407954" fg:w="644293683"/>
+            <text x="12.6441%" y="883.50">    return [execute_task(*a)..</text>
+        </g>
+        <g>
+            <title>/Users/agpe/.pyenv/versions/3.10.7/lib/python3.10/site-packages/dask/local.py:238 (&lt;listcomp&gt;) (644,293,683 bytes, 25.08%)</title>
+            <rect x="12.3941%" y="892" width="25.0794%" height="21" fill="rgb(255,174,174)" fg:x="318407954" fg:w="644293683"/>
+            <text x="12.6441%" y="905.50">/Users/agpe/.pyenv/versions/3..</text>
+        </g>
+        <g>
+            <title>    return [execute_task(*a) for a in it] (644,293,683 bytes, 25.08%)</title>
+            <rect x="12.3941%" y="914" width="25.0794%" height="21" fill="rgb(255,174,174)" fg:x="318407954" fg:w="644293683"/>
+            <text x="12.6441%" y="927.50">    return [execute_task(*a)..</text>
+        </g>
+        <g>
+            <title>/Users/agpe/.pyenv/versions/3.10.7/lib/python3.10/site-packages/dask/local.py:238 (batch_execute_tasks) (644,293,683 bytes, 25.08%)</title>
+            <rect x="12.3941%" y="936" width="25.0794%" height="21" fill="rgb(255,174,174)" fg:x="318407954" fg:w="644293683"/>
+            <text x="12.6441%" y="949.50">/Users/agpe/.pyenv/versions/3..</text>
+        </g>
+        <g>
+            <title>            result = self.fn(*self.args, **self.kwargs) (644,293,683 bytes, 25.08%)</title>
+            <rect x="12.3941%" y="958" width="25.0794%" height="21" fill="rgb(255,174,174)" fg:x="318407954" fg:w="644293683"/>
+            <text x="12.6441%" y="971.50">            result = self.fn..</text>
+        </g>
+        <g>
+            <title>/Users/agpe/.pyenv/versions/3.10.7/lib/python3.10/concurrent/futures/thread.py:58 (run) (644,293,683 bytes, 25.08%)</title>
+            <rect x="12.3941%" y="980" width="25.0794%" height="21" fill="rgb(255,174,174)" fg:x="318407954" fg:w="644293683"/>
+            <text x="12.6441%" y="993.50">/Users/agpe/.pyenv/versions/3..</text>
+        </g>
+        <g>
+            <title>                work_item.run() (644,293,683 bytes, 25.08%)</title>
+            <rect x="12.3941%" y="1002" width="25.0794%" height="21" fill="rgb(255,174,174)" fg:x="318407954" fg:w="644293683"/>
+            <text x="12.6441%" y="1015.50">                work_item.ru..</text>
+        </g>
+        <g>
+            <title>/Users/agpe/.pyenv/versions/3.10.7/lib/python3.10/concurrent/futures/thread.py:83 (_worker) (644,293,683 bytes, 25.08%)</title>
+            <rect x="12.3941%" y="1024" width="25.0794%" height="21" fill="rgb(255,174,174)" fg:x="318407954" fg:w="644293683"/>
+            <text x="12.6441%" y="1037.50">/Users/agpe/.pyenv/versions/3..</text>
+        </g>
+        <g>
+            <title>        return self.f.read(*args, **kwargs) (644,293,673 bytes, 25.08%)</title>
+            <rect x="37.5706%" y="122" width="25.0794%" height="21" fill="rgb(255,174,174)" fg:x="965195698" fg:w="644293673"/>
+            <text x="37.8206%" y="135.50">        return self.f.read(*..</text>
+        </g>
+        <g>
+            <title>/Users/agpe/.pyenv/versions/3.10.7/lib/python3.10/site-packages/fsspec/implementations/local.py:337 (read) (644,293,673 bytes, 25.08%)</title>
+            <rect x="37.5706%" y="144" width="25.0794%" height="21" fill="rgb(255,174,174)" fg:x="965195698" fg:w="644293673"/>
+            <text x="37.8206%" y="157.50">/Users/agpe/.pyenv/versions/3..</text>
+        </g>
+        <g>
+            <title>    b = f.read(length) (644,293,673 bytes, 25.08%)</title>
+            <rect x="37.5706%" y="166" width="25.0794%" height="21" fill="rgb(255,174,174)" fg:x="965195698" fg:w="644293673"/>
+            <text x="37.8206%" y="179.50">    b = f.read(length)..</text>
+        </g>
+        <g>
+            <title>/Users/agpe/.pyenv/versions/3.10.7/lib/python3.10/site-packages/fsspec/utils.py:266 (read_block) (644,293,673 bytes, 25.08%)</title>
+            <rect x="37.5706%" y="188" width="25.0794%" height="21" fill="rgb(255,174,174)" fg:x="965195698" fg:w="644293673"/>
+            <text x="37.8206%" y="201.50">/Users/agpe/.pyenv/versions/3..</text>
+        </g>
+        <g>
+            <title>        return read_block(f, off, bs, delimiter) (644,293,673 bytes, 25.08%)</title>
+            <rect x="37.5706%" y="210" width="25.0794%" height="21" fill="rgb(255,174,174)" fg:x="965195698" fg:w="644293673"/>
+            <text x="37.8206%" y="223.50">        return read_block(f,..</text>
+        </g>
+        <g>
+            <title>/Users/agpe/.pyenv/versions/3.10.7/lib/python3.10/site-packages/dask/bytes/core.py:192 (read_block_from_file) (644,293,673 bytes, 25.08%)</title>
+            <rect x="37.5706%" y="232" width="25.0794%" height="21" fill="rgb(255,174,174)" fg:x="965195698" fg:w="644293673"/>
+            <text x="37.8206%" y="245.50">/Users/agpe/.pyenv/versions/3..</text>
+        </g>
+        <g>
+            <title>        return func(*(_execute_task(a, cache) for a in args)) (644,293,673 bytes, 25.08%)</title>
+            <rect x="37.5706%" y="254" width="25.0794%" height="21" fill="rgb(255,174,174)" fg:x="965195698" fg:w="644293673"/>
+            <text x="37.8206%" y="267.50">        return func(*(_execu..</text>
+        </g>
+        <g>
+            <title>/Users/agpe/.pyenv/versions/3.10.7/lib/python3.10/site-packages/dask/core.py:119 (_execute_task) (644,293,673 bytes, 25.08%)</title>
+            <rect x="37.5706%" y="276" width="25.0794%" height="21" fill="rgb(255,174,174)" fg:x="965195698" fg:w="644293673"/>
+            <text x="37.8206%" y="289.50">/Users/agpe/.pyenv/versions/3..</text>
+        </g>
+        <g>
+            <title>        return [_execute_task(a, cache) for a in arg] (644,293,673 bytes, 25.08%)</title>
+            <rect x="37.5706%" y="298" width="25.0794%" height="21" fill="rgb(255,174,174)" fg:x="965195698" fg:w="644293673"/>
+            <text x="37.8206%" y="311.50">        return [_execute_tas..</text>
+        </g>
+        <g>
+            <title>/Users/agpe/.pyenv/versions/3.10.7/lib/python3.10/site-packages/dask/core.py:113 (&lt;listcomp&gt;) (644,293,673 bytes, 25.08%)</title>
+            <rect x="37.5706%" y="320" width="25.0794%" height="21" fill="rgb(255,174,174)" fg:x="965195698" fg:w="644293673"/>
+            <text x="37.8206%" y="333.50">/Users/agpe/.pyenv/versions/3..</text>
+        </g>
+        <g>
+            <title>        return [_execute_task(a, cache) for a in arg] (644,293,673 bytes, 25.08%)</title>
+            <rect x="37.5706%" y="342" width="25.0794%" height="21" fill="rgb(255,174,174)" fg:x="965195698" fg:w="644293673"/>
+            <text x="37.8206%" y="355.50">        return [_execute_tas..</text>
+        </g>
+        <g>
+            <title>/Users/agpe/.pyenv/versions/3.10.7/lib/python3.10/site-packages/dask/core.py:113 (_execute_task) (644,293,673 bytes, 25.08%)</title>
+            <rect x="37.5706%" y="364" width="25.0794%" height="21" fill="rgb(255,174,174)" fg:x="965195698" fg:w="644293673"/>
+            <text x="37.8206%" y="377.50">/Users/agpe/.pyenv/versions/3..</text>
+        </g>
+        <g>
+            <title>        return func(*(_execute_task(a, cache) for a in args)) (644,293,673 bytes, 25.08%)</title>
+            <rect x="37.5706%" y="386" width="25.0794%" height="21" fill="rgb(255,174,174)" fg:x="965195698" fg:w="644293673"/>
+            <text x="37.8206%" y="399.50">        return func(*(_execu..</text>
+        </g>
+        <g>
+            <title>/Users/agpe/.pyenv/versions/3.10.7/lib/python3.10/site-packages/dask/core.py:119 (&lt;genexpr&gt;) (644,293,673 bytes, 25.08%)</title>
+            <rect x="37.5706%" y="408" width="25.0794%" height="21" fill="rgb(255,174,174)" fg:x="965195698" fg:w="644293673"/>
+            <text x="37.8206%" y="421.50">/Users/agpe/.pyenv/versions/3..</text>
+        </g>
+        <g>
+            <title>        return func(*(_execute_task(a, cache) for a in args)) (644,293,673 bytes, 25.08%)</title>
+            <rect x="37.5706%" y="430" width="25.0794%" height="21" fill="rgb(255,174,174)" fg:x="965195698" fg:w="644293673"/>
+            <text x="37.8206%" y="443.50">        return func(*(_execu..</text>
+        </g>
+        <g>
+            <title>/Users/agpe/.pyenv/versions/3.10.7/lib/python3.10/site-packages/dask/core.py:119 (_execute_task) (644,293,673 bytes, 25.08%)</title>
+            <rect x="37.5706%" y="452" width="25.0794%" height="21" fill="rgb(255,174,174)" fg:x="965195698" fg:w="644293673"/>
+            <text x="37.8206%" y="465.50">/Users/agpe/.pyenv/versions/3..</text>
+        </g>
+        <g>
+            <title>        result = _execute_task(task, data) (644,293,673 bytes, 25.08%)</title>
+            <rect x="37.5706%" y="474" width="25.0794%" height="21" fill="rgb(255,174,174)" fg:x="965195698" fg:w="644293673"/>
+            <text x="37.8206%" y="487.50">        result = _execute_ta..</text>
+        </g>
+        <g>
+            <title>/Users/agpe/.pyenv/versions/3.10.7/lib/python3.10/site-packages/dask/local.py:224 (execute_task) (644,293,673 bytes, 25.08%)</title>
+            <rect x="37.5706%" y="496" width="25.0794%" height="21" fill="rgb(255,174,174)" fg:x="965195698" fg:w="644293673"/>
+            <text x="37.8206%" y="509.50">/Users/agpe/.pyenv/versions/3..</text>
+        </g>
+        <g>
+            <title>    return [execute_task(*a) for a in it] (644,293,673 bytes, 25.08%)</title>
+            <rect x="37.5706%" y="518" width="25.0794%" height="21" fill="rgb(255,174,174)" fg:x="965195698" fg:w="644293673"/>
+            <text x="37.8206%" y="531.50">    return [execute_task(*a)..</text>
+        </g>
+        <g>
+            <title>/Users/agpe/.pyenv/versions/3.10.7/lib/python3.10/site-packages/dask/local.py:238 (&lt;listcomp&gt;) (644,293,673 bytes, 25.08%)</title>
+            <rect x="37.5706%" y="540" width="25.0794%" height="21" fill="rgb(255,174,174)" fg:x="965195698" fg:w="644293673"/>
+            <text x="37.8206%" y="553.50">/Users/agpe/.pyenv/versions/3..</text>
+        </g>
+        <g>
+            <title>    return [execute_task(*a) for a in it] (644,293,673 bytes, 25.08%)</title>
+            <rect x="37.5706%" y="562" width="25.0794%" height="21" fill="rgb(255,174,174)" fg:x="965195698" fg:w="644293673"/>
+            <text x="37.8206%" y="575.50">    return [execute_task(*a)..</text>
+        </g>
+        <g>
+            <title>/Users/agpe/.pyenv/versions/3.10.7/lib/python3.10/site-packages/dask/local.py:238 (batch_execute_tasks) (644,293,673 bytes, 25.08%)</title>
+            <rect x="37.5706%" y="584" width="25.0794%" height="21" fill="rgb(255,174,174)" fg:x="965195698" fg:w="644293673"/>
+            <text x="37.8206%" y="597.50">/Users/agpe/.pyenv/versions/3..</text>
+        </g>
+        <g>
+            <title>            result = self.fn(*self.args, **self.kwargs) (644,293,673 bytes, 25.08%)</title>
+            <rect x="37.5706%" y="606" width="25.0794%" height="21" fill="rgb(255,174,174)" fg:x="965195698" fg:w="644293673"/>
+            <text x="37.8206%" y="619.50">            result = self.fn..</text>
+        </g>
+        <g>
+            <title>/Users/agpe/.pyenv/versions/3.10.7/lib/python3.10/concurrent/futures/thread.py:58 (run) (644,293,673 bytes, 25.08%)</title>
+            <rect x="37.5706%" y="628" width="25.0794%" height="21" fill="rgb(255,174,174)" fg:x="965195698" fg:w="644293673"/>
+            <text x="37.8206%" y="641.50">/Users/agpe/.pyenv/versions/3..</text>
+        </g>
+        <g>
+            <title>                work_item.run() (644,293,673 bytes, 25.08%)</title>
+            <rect x="37.5706%" y="650" width="25.0794%" height="21" fill="rgb(255,174,174)" fg:x="965195698" fg:w="644293673"/>
+            <text x="37.8206%" y="663.50">                work_item.ru..</text>
+        </g>
+        <g>
+            <title>/Users/agpe/.pyenv/versions/3.10.7/lib/python3.10/concurrent/futures/thread.py:83 (_worker) (644,293,673 bytes, 25.08%)</title>
+            <rect x="37.5706%" y="672" width="25.0794%" height="21" fill="rgb(255,174,174)" fg:x="965195698" fg:w="644293673"/>
+            <text x="37.8206%" y="685.50">/Users/agpe/.pyenv/versions/3..</text>
+        </g>
+        <g>
+            <title>                chunks = self._reader.read_low_memory(nrows) (959,467,646 bytes, 37.35%)</title>
+            <rect x="62.6499%" y="122" width="37.3476%" height="21" fill="rgb(255,158,158)" fg:x="1609489371" fg:w="959467646"/>
+            <text x="62.8999%" y="135.50">                chunks = self._reader.read_l..</text>
+        </g>
+        <g>
+            <title>/Users/agpe/.pyenv/versions/3.10.7/lib/python3.10/site-packages/pandas/io/parsers/c_parser_wrapper.py:230 (read) (959,467,646 bytes, 37.35%)</title>
+            <rect x="62.6499%" y="144" width="37.3476%" height="21" fill="rgb(255,158,158)" fg:x="1609489371" fg:w="959467646"/>
+            <text x="62.8999%" y="157.50">/Users/agpe/.pyenv/versions/3.10.7/lib/python..</text>
+        </g>
+        <g>
+            <title>                ) = self._engine.read(  # type: ignore[attr-defined] (959,467,646 bytes, 37.35%)</title>
+            <rect x="62.6499%" y="166" width="37.3476%" height="21" fill="rgb(255,158,158)" fg:x="1609489371" fg:w="959467646"/>
+            <text x="62.8999%" y="179.50">                ) = self._engine.read(  # ty..</text>
+        </g>
+        <g>
+            <title>/Users/agpe/.pyenv/versions/3.10.7/lib/python3.10/site-packages/pandas/io/parsers/readers.py:1778 (read) (959,467,646 bytes, 37.35%)</title>
+            <rect x="62.6499%" y="188" width="37.3476%" height="21" fill="rgb(255,158,158)" fg:x="1609489371" fg:w="959467646"/>
+            <text x="62.8999%" y="201.50">/Users/agpe/.pyenv/versions/3.10.7/lib/python..</text>
+        </g>
+        <g>
+            <title>        return parser.read(nrows) (959,467,646 bytes, 37.35%)</title>
+            <rect x="62.6499%" y="210" width="37.3476%" height="21" fill="rgb(255,158,158)" fg:x="1609489371" fg:w="959467646"/>
+            <text x="62.8999%" y="223.50">        return parser.read(nrows)..</text>
+        </g>
+        <g>
+            <title>/Users/agpe/.pyenv/versions/3.10.7/lib/python3.10/site-packages/pandas/io/parsers/readers.py:611 (_read) (959,467,646 bytes, 37.35%)</title>
+            <rect x="62.6499%" y="232" width="37.3476%" height="21" fill="rgb(255,158,158)" fg:x="1609489371" fg:w="959467646"/>
+            <text x="62.8999%" y="245.50">/Users/agpe/.pyenv/versions/3.10.7/lib/python..</text>
+        </g>
+        <g>
+            <title>    return _read(filepath_or_buffer, kwds) (959,467,646 bytes, 37.35%)</title>
+            <rect x="62.6499%" y="254" width="37.3476%" height="21" fill="rgb(255,158,158)" fg:x="1609489371" fg:w="959467646"/>
+            <text x="62.8999%" y="267.50">    return _read(filepath_or_buffer, kwds)..</text>
+        </g>
+        <g>
+            <title>/Users/agpe/.pyenv/versions/3.10.7/lib/python3.10/site-packages/pandas/io/parsers/readers.py:950 (read_csv) (959,467,646 bytes, 37.35%)</title>
+            <rect x="62.6499%" y="276" width="37.3476%" height="21" fill="rgb(255,158,158)" fg:x="1609489371" fg:w="959467646"/>
+            <text x="62.8999%" y="289.50">/Users/agpe/.pyenv/versions/3.10.7/lib/python..</text>
+        </g>
+        <g>
+            <title>            return func(*args, **kwargs) (959,467,646 bytes, 37.35%)</title>
+            <rect x="62.6499%" y="298" width="37.3476%" height="21" fill="rgb(255,158,158)" fg:x="1609489371" fg:w="959467646"/>
+            <text x="62.8999%" y="311.50">            return func(*args, **kwargs)..</text>
+        </g>
+        <g>
+            <title>/Users/agpe/.pyenv/versions/3.10.7/lib/python3.10/site-packages/pandas/util/_decorators.py:331 (wrapper) (959,467,646 bytes, 37.35%)</title>
+            <rect x="62.6499%" y="320" width="37.3476%" height="21" fill="rgb(255,158,158)" fg:x="1609489371" fg:w="959467646"/>
+            <text x="62.8999%" y="333.50">/Users/agpe/.pyenv/versions/3.10.7/lib/python..</text>
+        </g>
+        <g>
+            <title>            return func(*args, **kwargs) (959,467,646 bytes, 37.35%)</title>
+            <rect x="62.6499%" y="342" width="37.3476%" height="21" fill="rgb(255,158,158)" fg:x="1609489371" fg:w="959467646"/>
+            <text x="62.8999%" y="355.50">            return func(*args, **kwargs)..</text>
+        </g>
+        <g>
+            <title>/Users/agpe/.pyenv/versions/3.10.7/lib/python3.10/site-packages/pandas/util/_decorators.py:211 (wrapper) (959,467,646 bytes, 37.35%)</title>
+            <rect x="62.6499%" y="364" width="37.3476%" height="21" fill="rgb(255,158,158)" fg:x="1609489371" fg:w="959467646"/>
+            <text x="62.8999%" y="377.50">/Users/agpe/.pyenv/versions/3.10.7/lib/python..</text>
+        </g>
+        <g>
+            <title>    df = reader(bio, **kwargs) (959,467,646 bytes, 37.35%)</title>
+            <rect x="62.6499%" y="386" width="37.3476%" height="21" fill="rgb(255,158,158)" fg:x="1609489371" fg:w="959467646"/>
+            <text x="62.8999%" y="399.50">    df = reader(bio, **kwargs)..</text>
+        </g>
+        <g>
+            <title>/Users/agpe/.pyenv/versions/3.10.7/lib/python3.10/site-packages/dask/dataframe/io/csv.py:194 (pandas_read_text) (959,467,646 bytes, 37.35%)</title>
+            <rect x="62.6499%" y="408" width="37.3476%" height="21" fill="rgb(255,158,158)" fg:x="1609489371" fg:w="959467646"/>
+            <text x="62.8999%" y="421.50">/Users/agpe/.pyenv/versions/3.10.7/lib/python..</text>
+        </g>
+        <g>
+            <title>        df = pandas_read_text( (959,467,646 bytes, 37.35%)</title>
+            <rect x="62.6499%" y="430" width="37.3476%" height="21" fill="rgb(255,158,158)" fg:x="1609489371" fg:w="959467646"/>
+            <text x="62.8999%" y="443.50">        df = pandas_read_text(..</text>
+        </g>
+        <g>
+            <title>/Users/agpe/.pyenv/versions/3.10.7/lib/python3.10/site-packages/dask/dataframe/io/csv.py:141 (__call__) (959,467,646 bytes, 37.35%)</title>
+            <rect x="62.6499%" y="452" width="37.3476%" height="21" fill="rgb(255,158,158)" fg:x="1609489371" fg:w="959467646"/>
+            <text x="62.8999%" y="465.50">/Users/agpe/.pyenv/versions/3.10.7/lib/python..</text>
+        </g>
+        <g>
+            <title>        return func(*(_execute_task(a, cache) for a in args)) (959,467,646 bytes, 37.35%)</title>
+            <rect x="62.6499%" y="474" width="37.3476%" height="21" fill="rgb(255,158,158)" fg:x="1609489371" fg:w="959467646"/>
+            <text x="62.8999%" y="487.50">        return func(*(_execute_task(a, cache..</text>
+        </g>
+        <g>
+            <title>/Users/agpe/.pyenv/versions/3.10.7/lib/python3.10/site-packages/dask/core.py:119 (_execute_task) (959,467,646 bytes, 37.35%)</title>
+            <rect x="62.6499%" y="496" width="37.3476%" height="21" fill="rgb(255,158,158)" fg:x="1609489371" fg:w="959467646"/>
+            <text x="62.8999%" y="509.50">/Users/agpe/.pyenv/versions/3.10.7/lib/python..</text>
+        </g>
+        <g>
+            <title>        return func(*(_execute_task(a, cache) for a in args)) (959,467,646 bytes, 37.35%)</title>
+            <rect x="62.6499%" y="518" width="37.3476%" height="21" fill="rgb(255,158,158)" fg:x="1609489371" fg:w="959467646"/>
+            <text x="62.8999%" y="531.50">        return func(*(_execute_task(a, cache..</text>
+        </g>
+        <g>
+            <title>/Users/agpe/.pyenv/versions/3.10.7/lib/python3.10/site-packages/dask/core.py:119 (&lt;genexpr&gt;) (959,467,646 bytes, 37.35%)</title>
+            <rect x="62.6499%" y="540" width="37.3476%" height="21" fill="rgb(255,158,158)" fg:x="1609489371" fg:w="959467646"/>
+            <text x="62.8999%" y="553.50">/Users/agpe/.pyenv/versions/3.10.7/lib/python..</text>
+        </g>
+        <g>
+            <title>        return func(*(_execute_task(a, cache) for a in args)) (959,467,646 bytes, 37.35%)</title>
+            <rect x="62.6499%" y="562" width="37.3476%" height="21" fill="rgb(255,158,158)" fg:x="1609489371" fg:w="959467646"/>
+            <text x="62.8999%" y="575.50">        return func(*(_execute_task(a, cache..</text>
+        </g>
+        <g>
+            <title>/Users/agpe/.pyenv/versions/3.10.7/lib/python3.10/site-packages/dask/core.py:119 (_execute_task) (959,467,646 bytes, 37.35%)</title>
+            <rect x="62.6499%" y="584" width="37.3476%" height="21" fill="rgb(255,158,158)" fg:x="1609489371" fg:w="959467646"/>
+            <text x="62.8999%" y="597.50">/Users/agpe/.pyenv/versions/3.10.7/lib/python..</text>
+        </g>
+        <g>
+            <title>        return [_execute_task(a, cache) for a in arg] (959,467,646 bytes, 37.35%)</title>
+            <rect x="62.6499%" y="606" width="37.3476%" height="21" fill="rgb(255,158,158)" fg:x="1609489371" fg:w="959467646"/>
+            <text x="62.8999%" y="619.50">        return [_execute_task(a, cache) for ..</text>
+        </g>
+        <g>
+            <title>/Users/agpe/.pyenv/versions/3.10.7/lib/python3.10/site-packages/dask/core.py:113 (&lt;listcomp&gt;) (959,467,646 bytes, 37.35%)</title>
+            <rect x="62.6499%" y="628" width="37.3476%" height="21" fill="rgb(255,158,158)" fg:x="1609489371" fg:w="959467646"/>
+            <text x="62.8999%" y="641.50">/Users/agpe/.pyenv/versions/3.10.7/lib/python..</text>
+        </g>
+        <g>
+            <title>        return [_execute_task(a, cache) for a in arg] (959,467,646 bytes, 37.35%)</title>
+            <rect x="62.6499%" y="650" width="37.3476%" height="21" fill="rgb(255,158,158)" fg:x="1609489371" fg:w="959467646"/>
+            <text x="62.8999%" y="663.50">        return [_execute_task(a, cache) for ..</text>
+        </g>
+        <g>
+            <title>/Users/agpe/.pyenv/versions/3.10.7/lib/python3.10/site-packages/dask/core.py:113 (_execute_task) (959,467,646 bytes, 37.35%)</title>
+            <rect x="62.6499%" y="672" width="37.3476%" height="21" fill="rgb(255,158,158)" fg:x="1609489371" fg:w="959467646"/>
+            <text x="62.8999%" y="685.50">/Users/agpe/.pyenv/versions/3.10.7/lib/python..</text>
+        </g>
+        <g>
+            <title>        return func(*(_execute_task(a, cache) for a in args)) (959,467,646 bytes, 37.35%)</title>
+            <rect x="62.6499%" y="694" width="37.3476%" height="21" fill="rgb(255,158,158)" fg:x="1609489371" fg:w="959467646"/>
+            <text x="62.8999%" y="707.50">        return func(*(_execute_task(a, cache..</text>
+        </g>
+        <g>
+            <title>/Users/agpe/.pyenv/versions/3.10.7/lib/python3.10/site-packages/dask/core.py:119 (&lt;genexpr&gt;) (959,467,646 bytes, 37.35%)</title>
+            <rect x="62.6499%" y="716" width="37.3476%" height="21" fill="rgb(255,158,158)" fg:x="1609489371" fg:w="959467646"/>
+            <text x="62.8999%" y="729.50">/Users/agpe/.pyenv/versions/3.10.7/lib/python..</text>
+        </g>
+        <g>
+            <title>        return func(*(_execute_task(a, cache) for a in args)) (959,467,646 bytes, 37.35%)</title>
+            <rect x="62.6499%" y="738" width="37.3476%" height="21" fill="rgb(255,158,158)" fg:x="1609489371" fg:w="959467646"/>
+            <text x="62.8999%" y="751.50">        return func(*(_execute_task(a, cache..</text>
+        </g>
+        <g>
+            <title>/Users/agpe/.pyenv/versions/3.10.7/lib/python3.10/site-packages/dask/core.py:119 (_execute_task) (959,467,646 bytes, 37.35%)</title>
+            <rect x="62.6499%" y="760" width="37.3476%" height="21" fill="rgb(255,158,158)" fg:x="1609489371" fg:w="959467646"/>
+            <text x="62.8999%" y="773.50">/Users/agpe/.pyenv/versions/3.10.7/lib/python..</text>
+        </g>
+        <g>
+            <title>        return [_execute_task(a, cache) for a in arg] (959,467,646 bytes, 37.35%)</title>
+            <rect x="62.6499%" y="782" width="37.3476%" height="21" fill="rgb(255,158,158)" fg:x="1609489371" fg:w="959467646"/>
+            <text x="62.8999%" y="795.50">        return [_execute_task(a, cache) for ..</text>
+        </g>
+        <g>
+            <title>/Users/agpe/.pyenv/versions/3.10.7/lib/python3.10/site-packages/dask/core.py:113 (&lt;listcomp&gt;) (959,467,646 bytes, 37.35%)</title>
+            <rect x="62.6499%" y="804" width="37.3476%" height="21" fill="rgb(255,158,158)" fg:x="1609489371" fg:w="959467646"/>
+            <text x="62.8999%" y="817.50">/Users/agpe/.pyenv/versions/3.10.7/lib/python..</text>
+        </g>
+        <g>
+            <title>        return [_execute_task(a, cache) for a in arg] (959,467,646 bytes, 37.35%)</title>
+            <rect x="62.6499%" y="826" width="37.3476%" height="21" fill="rgb(255,158,158)" fg:x="1609489371" fg:w="959467646"/>
+            <text x="62.8999%" y="839.50">        return [_execute_task(a, cache) for ..</text>
+        </g>
+        <g>
+            <title>/Users/agpe/.pyenv/versions/3.10.7/lib/python3.10/site-packages/dask/core.py:113 (_execute_task) (959,467,646 bytes, 37.35%)</title>
+            <rect x="62.6499%" y="848" width="37.3476%" height="21" fill="rgb(255,158,158)" fg:x="1609489371" fg:w="959467646"/>
+            <text x="62.8999%" y="861.50">/Users/agpe/.pyenv/versions/3.10.7/lib/python..</text>
+        </g>
+        <g>
+            <title>        return func(*(_execute_task(a, cache) for a in args)) (959,467,646 bytes, 37.35%)</title>
+            <rect x="62.6499%" y="870" width="37.3476%" height="21" fill="rgb(255,158,158)" fg:x="1609489371" fg:w="959467646"/>
+            <text x="62.8999%" y="883.50">        return func(*(_execute_task(a, cache..</text>
+        </g>
+        <g>
+            <title>/Users/agpe/.pyenv/versions/3.10.7/lib/python3.10/site-packages/dask/core.py:119 (&lt;genexpr&gt;) (959,467,646 bytes, 37.35%)</title>
+            <rect x="62.6499%" y="892" width="37.3476%" height="21" fill="rgb(255,158,158)" fg:x="1609489371" fg:w="959467646"/>
+            <text x="62.8999%" y="905.50">/Users/agpe/.pyenv/versions/3.10.7/lib/python..</text>
+        </g>
+        <g>
+            <title>        return func(*(_execute_task(a, cache) for a in args)) (959,467,646 bytes, 37.35%)</title>
+            <rect x="62.6499%" y="914" width="37.3476%" height="21" fill="rgb(255,158,158)" fg:x="1609489371" fg:w="959467646"/>
+            <text x="62.8999%" y="927.50">        return func(*(_execute_task(a, cache..</text>
+        </g>
+        <g>
+            <title>/Users/agpe/.pyenv/versions/3.10.7/lib/python3.10/site-packages/dask/core.py:119 (_execute_task) (959,467,646 bytes, 37.35%)</title>
+            <rect x="62.6499%" y="936" width="37.3476%" height="21" fill="rgb(255,158,158)" fg:x="1609489371" fg:w="959467646"/>
+            <text x="62.8999%" y="949.50">/Users/agpe/.pyenv/versions/3.10.7/lib/python..</text>
+        </g>
+        <g>
+            <title>        result = _execute_task(task, cache) (959,467,646 bytes, 37.35%)</title>
+            <rect x="62.6499%" y="958" width="37.3476%" height="21" fill="rgb(255,158,158)" fg:x="1609489371" fg:w="959467646"/>
+            <text x="62.8999%" y="971.50">        result = _execute_task(task, cache)..</text>
+        </g>
+        <g>
+            <title>/Users/agpe/.pyenv/versions/3.10.7/lib/python3.10/site-packages/dask/core.py:149 (get) (959,467,646 bytes, 37.35%)</title>
+            <rect x="62.6499%" y="980" width="37.3476%" height="21" fill="rgb(255,158,158)" fg:x="1609489371" fg:w="959467646"/>
+            <text x="62.8999%" y="993.50">/Users/agpe/.pyenv/versions/3.10.7/lib/python..</text>
+        </g>
+        <g>
+            <title>        return core.get(self.dsk, self.outkey, dict(zip(self.inkeys, args))) (959,467,646 bytes, 37.35%)</title>
+            <rect x="62.6499%" y="1002" width="37.3476%" height="21" fill="rgb(255,158,158)" fg:x="1609489371" fg:w="959467646"/>
+            <text x="62.8999%" y="1015.50">        return core.get(self.dsk, self.outke..</text>
+        </g>
+        <g>
+            <title>/Users/agpe/.pyenv/versions/3.10.7/lib/python3.10/site-packages/dask/optimization.py:990 (__call__) (959,467,646 bytes, 37.35%)</title>
+            <rect x="62.6499%" y="1024" width="37.3476%" height="21" fill="rgb(255,158,158)" fg:x="1609489371" fg:w="959467646"/>
+            <text x="62.8999%" y="1037.50">/Users/agpe/.pyenv/versions/3.10.7/lib/python..</text>
+        </g>
+        <g>
+            <title>        return func(*(_execute_task(a, cache) for a in args)) (959,467,646 bytes, 37.35%)</title>
+            <rect x="62.6499%" y="1046" width="37.3476%" height="21" fill="rgb(255,158,158)" fg:x="1609489371" fg:w="959467646"/>
+            <text x="62.8999%" y="1059.50">        return func(*(_execute_task(a, cache..</text>
+        </g>
+        <g>
+            <title>/Users/agpe/.pyenv/versions/3.10.7/lib/python3.10/site-packages/dask/core.py:119 (_execute_task) (959,467,646 bytes, 37.35%)</title>
+            <rect x="62.6499%" y="1068" width="37.3476%" height="21" fill="rgb(255,158,158)" fg:x="1609489371" fg:w="959467646"/>
+            <text x="62.8999%" y="1081.50">/Users/agpe/.pyenv/versions/3.10.7/lib/python..</text>
+        </g>
+        <g>
+            <title>        result = _execute_task(task, data) (959,467,646 bytes, 37.35%)</title>
+            <rect x="62.6499%" y="1090" width="37.3476%" height="21" fill="rgb(255,158,158)" fg:x="1609489371" fg:w="959467646"/>
+            <text x="62.8999%" y="1103.50">        result = _execute_task(task, data)..</text>
+        </g>
+        <g>
+            <title>/Users/agpe/.pyenv/versions/3.10.7/lib/python3.10/site-packages/dask/local.py:224 (execute_task) (959,467,646 bytes, 37.35%)</title>
+            <rect x="62.6499%" y="1112" width="37.3476%" height="21" fill="rgb(255,158,158)" fg:x="1609489371" fg:w="959467646"/>
+            <text x="62.8999%" y="1125.50">/Users/agpe/.pyenv/versions/3.10.7/lib/python..</text>
+        </g>
+        <g>
+            <title>    return [execute_task(*a) for a in it] (959,467,646 bytes, 37.35%)</title>
+            <rect x="62.6499%" y="1134" width="37.3476%" height="21" fill="rgb(255,158,158)" fg:x="1609489371" fg:w="959467646"/>
+            <text x="62.8999%" y="1147.50">    return [execute_task(*a) for a in it]..</text>
+        </g>
+        <g>
+            <title>/Users/agpe/.pyenv/versions/3.10.7/lib/python3.10/site-packages/dask/local.py:238 (&lt;listcomp&gt;) (959,467,646 bytes, 37.35%)</title>
+            <rect x="62.6499%" y="1156" width="37.3476%" height="21" fill="rgb(255,158,158)" fg:x="1609489371" fg:w="959467646"/>
+            <text x="62.8999%" y="1169.50">/Users/agpe/.pyenv/versions/3.10.7/lib/python..</text>
+        </g>
+        <g>
+            <title>    return [execute_task(*a) for a in it] (959,467,646 bytes, 37.35%)</title>
+            <rect x="62.6499%" y="1178" width="37.3476%" height="21" fill="rgb(255,158,158)" fg:x="1609489371" fg:w="959467646"/>
+            <text x="62.8999%" y="1191.50">    return [execute_task(*a) for a in it]..</text>
+        </g>
+        <g>
+            <title>/Users/agpe/.pyenv/versions/3.10.7/lib/python3.10/site-packages/dask/local.py:238 (batch_execute_tasks) (959,467,646 bytes, 37.35%)</title>
+            <rect x="62.6499%" y="1200" width="37.3476%" height="21" fill="rgb(255,158,158)" fg:x="1609489371" fg:w="959467646"/>
+            <text x="62.8999%" y="1213.50">/Users/agpe/.pyenv/versions/3.10.7/lib/python..</text>
+        </g>
+        <g>
+            <title>            result = self.fn(*self.args, **self.kwargs) (959,467,646 bytes, 37.35%)</title>
+            <rect x="62.6499%" y="1222" width="37.3476%" height="21" fill="rgb(255,158,158)" fg:x="1609489371" fg:w="959467646"/>
+            <text x="62.8999%" y="1235.50">            result = self.fn(*self.args, **s..</text>
+        </g>
+        <g>
+            <title>/Users/agpe/.pyenv/versions/3.10.7/lib/python3.10/concurrent/futures/thread.py:58 (run) (959,467,646 bytes, 37.35%)</title>
+            <rect x="62.6499%" y="1244" width="37.3476%" height="21" fill="rgb(255,158,158)" fg:x="1609489371" fg:w="959467646"/>
+            <text x="62.8999%" y="1257.50">/Users/agpe/.pyenv/versions/3.10.7/lib/python..</text>
+        </g>
+        <g>
+            <title>                work_item.run() (959,467,646 bytes, 37.35%)</title>
+            <rect x="62.6499%" y="1266" width="37.3476%" height="21" fill="rgb(255,158,158)" fg:x="1609489371" fg:w="959467646"/>
+            <text x="62.8999%" y="1279.50">                work_item.run()..</text>
+        </g>
+        <g>
+            <title>/Users/agpe/.pyenv/versions/3.10.7/lib/python3.10/concurrent/futures/thread.py:83 (_worker) (959,467,646 bytes, 37.35%)</title>
+            <rect x="62.6499%" y="1288" width="37.3476%" height="21" fill="rgb(255,158,158)" fg:x="1609489371" fg:w="959467646"/>
+            <text x="62.8999%" y="1301.50">/Users/agpe/.pyenv/versions/3.10.7/lib/python..</text>
+        </g>
+        <g>
+            <title>all (2,569,020,121 bytes, 100%)</title>
+            <rect x="0.0000%" y="100" width="100.0000%" height="21" fill="rgb(255,100,100)" fg:x="0" fg:w="2569020121"/>
+            <text x="0.2500%" y="113.50"></text>
+        </g>
+    </svg>
+</svg>
