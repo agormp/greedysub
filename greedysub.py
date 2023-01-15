@@ -2,9 +2,6 @@
 
 import argparse, sys, itertools
 import pandas as pd
-import dask
-import dask.dataframe as dd
-from dask.distributed import Client
 from collections import defaultdict
 from operator import itemgetter
 from pathlib import Path
@@ -35,6 +32,7 @@ def main(commandlist=None):
 # Python note: "commandlist" is to enable unit testing of argparse code
 # Will be "None" when run in script mode, and argparse will then automatically take values from sys.argv[1:]
 
+
 def parse_commandline(commandlist):
     parser = build_parser()
     args = parser.parse_args(commandlist)
@@ -45,6 +43,7 @@ def parse_commandline(commandlist):
     return args
 
 ################################################################################################
+
 
 def build_parser():
 
@@ -84,6 +83,7 @@ class NeighborGraph:
     """Stores information about nodes and their connections.
     Methods for interrogating and changing graph"""
 
+
     def __init__(self, args):
 
         # self.neighbors: dict(node:set(node's neighbors))
@@ -96,25 +96,24 @@ class NeighborGraph:
         # self.origdata["average_degree"]: average no. connections to a node before reducing
         # self.origdata["max/min_degree"]: max/min no. connections to a node before reducing
         # self.origdata["average_dist"]: average distance between pairs of nodes before reducing
-        with Client() as client:
-            ddf = dd.read_csv(args.infile, names=["name1", "name2", "val"], dtype={"name1":str, "name2":str, "val":float}, delimiter=" ")
+        nreadlines = 1000000
+        nodes = set()
+        neighbors = defaultdict(set)
+        valuesum = 0
+        reader = pd.read_csv(args.infile, engine="c", delim_whitespace=True, chunksize=nreadlines,
+                             names=["name1", "name2", "val"], dtype={"name1":str, "name2":str, "val":float})
 
-            nodes = dask.delayed(set)(ddf["name1"].values)
-            nodes2 = dask.delayed(set)(ddf["name2"].values)
-            nodes = nodes | nodes2
-
-            valuesum = ddf["val"].values.sum()
+        for df in reader:
+            nodes.update(df["name1"].values)
+            nodes.update(df["name2"].values)
+            valuesum += df["val"].values.sum()
 
             if args.valuetype == "sim":
-                ddf = ddf.loc[ddf["val"].values > args.cutoff]
+                df = df.loc[df["val"].values > args.cutoff]
             else:
-                ddf = ddf.loc[ddf["val"].values < args.cutoff]
-            ddf = ddf.loc[ddf["name1"].values != ddf["name2"].values]
-
-            nodes,valuesum,ddf = dask.compute(nodes,valuesum,ddf)
-
-            neighbors = defaultdict(set)
-            for name1, name2 in zip(ddf["name1"].values, ddf["name2"].values):
+                df = df.loc[df["val"].values < args.cutoff]
+            df = df.loc[df["name1"].values != df["name2"].values]
+            for name1, name2 in zip(df["name1"].values, df["name2"].values):
                 neighbors[name1].add(name2)
                 neighbors[name2].add(name1)
 
@@ -179,6 +178,7 @@ class NeighborGraph:
 
     ############################################################################################
 
+    #@profile
     def remove_connection(self, node1, node2):
         """Removes the edge from node1 to node2 in graph"""
 
@@ -198,6 +198,7 @@ class NeighborGraph:
 
     ############################################################################################
 
+    #@profile
     def remove_neighbors(self, nodename):
         """Removes neighbors of nodename from graph, if there are any"""
 
