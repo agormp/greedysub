@@ -9,3 +9,8 @@ tests/testout.txt
 tests/pair*
 tmp/
 mprof*
+fil-result/
+tests/fil-result
+tests/tmp*
+tests/*png
+tests/prof*
