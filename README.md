@@ -1,6 +1,6 @@
 # greedysub
 
-![](https://img.shields.io/badge/version-1.2.2-blue)
+![](https://img.shields.io/badge/version-1.2.3-blue)
 [![PyPI downloads](https://static.pepy.tech/personalized-badge/greedysub?period=total&units=international_system&left_color=grey&right_color=blue&left_text=downloads)](https://pepy.tech/project/greedysub)
 
 The `greedysub` command-line program selects a subset of input data such that no retained items are closely related ("neighbors"). 
@@ -67,7 +67,7 @@ options:
   -c CUTOFF         cutoff value for deciding which pairs are neighbors
   -k KEEPFILE       (optional) file with names of items that must be kept (one name per
                     line)
-  --par             Use paralellization to speed up parsing of large input files.
+  --par             Use parallelization to speed up parsing of large input files.
                     Requires multiple cores
 ```
 

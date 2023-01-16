@@ -78,7 +78,7 @@ def build_parser():
                           help="(optional) file with names of items that must be kept (one name per line)")
 
     parser.add_argument("--par", action="store_true", dest="parallel",
-                          help="Use paralellization to speed up parsing of large input files. Requires multiple cores")
+                          help="Use parallelization to speed up parsing of large input files. Requires multiple cores")
 
     return parser
 
