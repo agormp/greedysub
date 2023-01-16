@@ -3,13 +3,13 @@
 ![](https://img.shields.io/badge/version-1.2.2-blue)
 [![PyPI downloads](https://static.pepy.tech/personalized-badge/greedysub?period=total&units=international_system&left_color=grey&right_color=blue&left_text=downloads)](https://pepy.tech/project/greedysub)
 
-The `greedysub` program selects a subset of input data such that no retained items are closely related ("neighbors"). 
+The `greedysub` command-line program selects a subset of input data such that no retained items are closely related ("neighbors"). 
 
 ![](https://github.com/agormp/greedysub/raw/main/maxindset.png?raw=true)
 
 ## Overview
 
-One use-case is to select a non-redundant subset of DNA- or protein-sequences, i.e., a subset where all pairwise sequence identities are below a given threshold. However, the program can be used to find representative subsets for any other type of items also, or, more generally, to find a ["maximal independent set"](#theory) on a graph. 
+One use case for `greedysub` is to select a non-redundant subset of DNA- or protein-sequences, i.e., a subset where all pairwise sequence identities are below a given threshold. However, the program can be used to find representative subsets for any other type of items also, or, more generally, to find a ["maximal independent set"](#theory) on a graph. 
 
 The program requires a list of pairwise similarities (or distances) as input, along with a cutoff specifying when two items are considered to be neighbors.
 
