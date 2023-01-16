@@ -90,16 +90,11 @@ class NeighborGraph:
     Methods for interrogating and changing graph"""
 
 
-    def __init__(self, args):
+    def __init__(self, args, chunksize=1000000):
         if args.parallel == False:
-            nodes,valuesum,df = self.serial_parsing(args)
+            nodes,neighbors,valuesum = self.serial_parsing(args, chunksize)
         else:
-            nodes,valuesum,df = self.parallel_parsing(args)
-        neighbors = defaultdict(set)
-        for name1, name2 in zip(df["name1"].values, df["name2"].values):
-            neighbors[name1].add(name2)
-            neighbors[name2].add(name1)
-        del(df)
+            nodes,neighbors,valuesum = self.parallel_parsing(args)
 
         # Convert to regular dict (not defaultdict) to avoid gotchas with key generation on access
         # Python note: would it be faster to just use dict.setdefault() during creation?
@@ -125,15 +120,14 @@ class NeighborGraph:
                 for line in keepfile:
                     node = line.strip()
                     self.keepset.add(node)
-        #self.df = df
 
     ############################################################################################
 
-    def serial_parsing(self, args):
+    def serial_parsing(self, args, chunksize):
         nodes = set()
         neighbors = defaultdict(set)
         valuesum = 0
-        reader = pd.read_csv(args.infile, engine="c", delim_whitespace=True, chunksize=1000000,
+        reader = pd.read_csv(args.infile, engine="c", delim_whitespace=True, chunksize=chunksize,
                              names=["name1", "name2", "val"], dtype={"name1":str, "name2":str, "val":float})
 
         for df in reader:
@@ -145,7 +139,12 @@ class NeighborGraph:
                 df = df.loc[df["val"].values > args.cutoff]
             else:
                 df = df.loc[df["val"].values < args.cutoff]
-        return nodes,valuesum,df
+            df = df.loc[df["name1"].values != df["name2"].values]
+            for name1, name2 in zip(df["name1"].values, df["name2"].values):
+                neighbors[name1].add(name2)
+                neighbors[name2].add(name1)
+
+        return nodes,neighbors,valuesum
 
     ############################################################################################
 
@@ -170,7 +169,13 @@ class NeighborGraph:
                 ddf = ddf.loc[ddf["val"].values < args.cutoff]
             ddf = ddf.loc[ddf["name1"].values != ddf["name2"].values]
             nodes,valuesum,df = dask.compute(nodes,valuesum,ddf, scheduler=client)
-        return nodes,valuesum,df
+
+        neighbors = defaultdict(set)
+        for name1, name2 in zip(df["name1"].values, df["name2"].values):
+            neighbors[name1].add(name2)
+            neighbors[name2].add(name1)
+
+        return nodes,neighbors,valuesum
 
     ############################################################################################
 
