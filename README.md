@@ -1,6 +1,6 @@
 # greedysub
 
-![](https://img.shields.io/badge/version-1.2.0-blue)
+![](https://img.shields.io/badge/version-1.2.1-blue)
 [![PyPI downloads](https://static.pepy.tech/personalized-badge/greedysub?period=total&units=international_system&left_color=grey&right_color=blue&left_text=downloads)](https://pepy.tech/project/greedysub)
 
 ![](https://github.com/agormp/greedysub/raw/main/maxindset.png?raw=true)
