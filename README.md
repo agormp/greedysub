@@ -1,6 +1,6 @@
 # greedysub
 
-![](https://img.shields.io/badge/version-1.1.1-blue)
+![](https://img.shields.io/badge/version-1.2.0-blue)
 [![PyPI downloads](https://static.pepy.tech/personalized-badge/greedysub?period=total&units=international_system&left_color=grey&right_color=blue&left_text=downloads)](https://pepy.tech/project/greedysub)
 
 ![](https://github.com/agormp/greedysub/raw/main/maxindset.png?raw=true)
@@ -41,10 +41,11 @@ python3 -m pip install --upgrade greedysub
 
 ```
 usage: greedysub [-h] [--algo ALGORITHM] [--val VALUETYPE] [-c CUTOFF] [-k KEEPFILE]
+                    [--par]
                     INFILE OUTFILE
 
-Selects subset of items, based on list of pairwise similarities (or distances), such that
-no retained items are close neighbors
+Selects subset of items, based on list of pairwise similarities (or distances), such
+that no retained items are close neighbors
 
 positional arguments:
   INFILE            input file containing similarity or distance for each pair of items:
@@ -60,6 +61,8 @@ options:
   -c CUTOFF         cutoff value for deciding which pairs are neighbors
   -k KEEPFILE       (optional) file with names of items that must be kept (one name per
                     line)
+  --par             Use paralellization to speed up parsing of large input files.
+                    Requires multiple cores
 ```
 
 ### Input file
@@ -189,5 +192,7 @@ Given a graph G:
 
 ### Computational performance:
 
-The program has been optimized to run reasonably fast with limited memory usage. For instance: 100 million lines of pairwise distance info (about 3.5 GB) was analyzed in 29 seconds, using about 400 MB of memory, on a 2021 Macbook Pro.
+The program has been optimized to run reasonably fast with limited memory usage. For large input files it may be faster to use the option `--par` which parallelizes reading and parsing of the input file (using [dask](https://docs.dask.org/en/stable/)). 
+
+For instance: 100 million lines of pairwise distance info (about 3.3 GB) was analyzed in 17 seconds on a 2021 Macbook Pro with 10 cores, when using parallelization (`--par`). The same file analyzed in 29 seconds without parallelization.
 
