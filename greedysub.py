@@ -76,7 +76,7 @@ def build_parser():
                           help="(optional) file with names of items that must be kept (one name per line)")
 
     parser.add_argument("--par", action="store_true", dest="parallel",
-                          help="Use paralellization to speed up parsing of input file. Requires multiple cores to be helpful")
+                          help="Use paralellization to speed up parsing of input file. Requires multiple cores")
 
     return parser
 
@@ -99,7 +99,7 @@ class NeighborGraph:
         # self.origdata["average_degree"]: average no. connections to a node before reducing
         # self.origdata["max/min_degree"]: max/min no. connections to a node before reducing
         # self.origdata["average_dist"]: average distance between pairs of nodes before reducing
-        if args.parallel = False:
+        if args.parallel == False:
             nodes,valuesum,df = self.serial_parsing(args)
         else:
             nodes,valuesum,df = self.parallel_parsing(args)
@@ -139,7 +139,22 @@ class NeighborGraph:
     ############################################################################################
 
     def serial_parsing(self, args):
+        nodes = set()
+        neighbors = defaultdict(set)
+        valuesum = 0
+        reader = pd.read_csv(args.infile, engine="c", delim_whitespace=True, chunksize=1000000,
+                             names=["name1", "name2", "val"], dtype={"name1":str, "name2":str, "val":float})
 
+        for df in reader:
+            nodes.update(df["name1"].values)
+            nodes.update(df["name2"].values)
+            valuesum += df["val"].values.sum()
+
+            if args.valuetype == "sim":
+                df = df.loc[df["val"].values > args.cutoff]
+            else:
+                df = df.loc[df["val"].values < args.cutoff]
+        return nodes,valuesum,df
 
     ############################################################################################
 
