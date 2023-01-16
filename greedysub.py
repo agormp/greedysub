@@ -97,7 +97,10 @@ class NeighborGraph:
         # self.origdata["max/min_degree"]: max/min no. connections to a node before reducing
         # self.origdata["average_dist"]: average distance between pairs of nodes before reducing
         with Client() as client:
-            ddf = dd.read_csv(args.infile, names=["name1", "name2", "val"], dtype={"name1":str, "name2":str, "val":float}, delimiter=" ")
+            ddf = dd.read_csv(args.infile,
+                              delim_whitespace=True,
+                              names=["name1", "name2", "val"],
+                              dtype={"name1":str, "name2":str, "val":float})
 
             nodes = dask.delayed(set)(ddf["name1"].values)
             nodes2 = dask.delayed(set)(ddf["name2"].values)
@@ -111,12 +114,13 @@ class NeighborGraph:
                 ddf = ddf.loc[ddf["val"].values < args.cutoff]
             ddf = ddf.loc[ddf["name1"].values != ddf["name2"].values]
 
-            nodes,valuesum,ddf = dask.compute(nodes,valuesum,ddf)
+            nodes,valuesum,ddf = dask.compute(nodes,valuesum,ddf, scheduler=client)
 
-            neighbors = defaultdict(set)
-            for name1, name2 in zip(ddf["name1"].values, ddf["name2"].values):
-                neighbors[name1].add(name2)
-                neighbors[name2].add(name1)
+        neighbors = defaultdict(set)
+        for name1, name2 in zip(ddf["name1"].values, ddf["name2"].values):
+            dask.delayed(neighbors[name1].add(name2))
+            dask.delayed(neighbors[name2].add(name1))
+
 
         # Convert to regular dict (not defaultdict) to avoid gotchas with key generation on access
         # Python note: would it be faster to just use dict.setdefault() during creation?
