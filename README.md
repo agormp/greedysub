@@ -122,10 +122,10 @@ greedysub --algo min --val sim -c 0.75 simfile.txt resultfile.txt
 greedysub --algo min --val dist -c 10 distfile.txt resultfile.txt
 ```
 
-#### Select items with max pairwise similarity 3, while keeping items in keeplist.txt, using "greedy-max"
+#### Select items with minimum pairwise distance 3, while keeping items in keeplist.txt, using "greedy-max"
 
 ```
-greedysub --algo max --val sim -c 3 -k keeplist.txt simfile.txt resultfile.txt
+greedysub --algo max --val dist -c 3 -k keeplist.txt simfile.txt resultfile.txt
 ```
 
 ### Summary info written to stdout
