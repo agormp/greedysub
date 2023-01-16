@@ -88,17 +88,6 @@ class NeighborGraph:
     Methods for interrogating and changing graph"""
 
     def __init__(self, args):
-
-        # self.neighbors: dict(node:set(node's neighbors))
-        # self.neighbor_count: dict(node:count of node's neighbors)
-        # Note: only nodes WITH neighbors are keys in these two dicts
-        # Note 2: these dicts are changed by algorithm during iteration
-
-        # self.nodes: set(all nodes)
-        # self.origdata["orignum"]: number of nodes in graph before reducing
-        # self.origdata["average_degree"]: average no. connections to a node before reducing
-        # self.origdata["max/min_degree"]: max/min no. connections to a node before reducing
-        # self.origdata["average_dist"]: average distance between pairs of nodes before reducing
         if args.parallel == False:
             nodes,valuesum,df = self.serial_parsing(args)
         else:
@@ -158,6 +147,10 @@ class NeighborGraph:
 
     ############################################################################################
 
+    # Not sure I am doing this correctly...
+    # Seems that scheduler is still running after exit. Or something:
+    #    DeprecationWarning: There is no current event loop
+    # Only occurs during testing (since new Client call made while something still around?)
     def parallel_parsing(self, args):
         with Client() as client:
             ddf = dd.read_csv(args.infile,
