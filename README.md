@@ -1,6 +1,6 @@
 # greedysub
 
-![](https://img.shields.io/badge/version-1.2.1-blue)
+![](https://img.shields.io/badge/version-1.2.2-blue)
 [![PyPI downloads](https://static.pepy.tech/personalized-badge/greedysub?period=total&units=international_system&left_color=grey&right_color=blue&left_text=downloads)](https://pepy.tech/project/greedysub)
 
 ![](https://github.com/agormp/greedysub/raw/main/maxindset.png?raw=true)
@@ -35,7 +35,12 @@ python3 -m pip install --upgrade greedysub
 
 ## Dependencies
 
-`greedysub` relies on the [pandas package](https://pandas.pydata.org) and the [numpy package](https://numpy.org). These are automatically included when using pip to install.
+The primary dependencies of `greedysub` are:
+
+* [pandas](https://pandas.pydata.org)
+* [dask[complete]](https://docs.dask.org/en/stable/): For optional parallelization when reading and parsing input file.
+
+These packages are automatically included when using pip to install.
 
 ## Usage
 
