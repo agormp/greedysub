@@ -53,7 +53,7 @@ class Test_parse_commandline:
 
 class Test_init:
 
-    @pytest.mark.parametrize("initmode", ["parallel", "serial"])
+    @pytest.mark.parametrize("initmode", ["parallel", "serial", "lowchunksize"])
     def test_example_with_neighbors(self, random_pairfile_50nodes, initmode):
         distfile, nodes, pairs, cutoff = random_pairfile_50nodes
         if initmode=="parallel":
@@ -61,7 +61,10 @@ class Test_init:
         else:
             commandlist = f"--val dist -c {cutoff} {distfile} outfile.txt".split()
         args = grsub.parse_commandline(commandlist)
-        gr = grsub.NeighborGraph(args)
+        if initmode=="lowchunksize":
+            gr = grsub.NeighborGraph(args, chunksize=20)
+        else:
+            gr = grsub.NeighborGraph(args)
         assert gr.nodes == set(nodes)
         for n1,n2 in itertools.combinations(nodes, 2):
             if ((n1,n2) in pairs) or ((n2,n1) in pairs):
@@ -84,7 +87,7 @@ class Test_init:
         assert gr.origdata["min_degree"] == min(nbcountlist)
         # how to check gr.average_dist from given info???
 
-    @pytest.mark.parametrize("initmode", ["parallel", "serial"])
+    @pytest.mark.parametrize("initmode", ["parallel", "serial", "lowchunksize"])
     def test_example_with_neighbors_sim(self, random_pairfile_50nodes_sim, initmode):
         simfile, nodes, pairs, cutoff = random_pairfile_50nodes_sim
         if initmode=="parallel":
@@ -92,7 +95,10 @@ class Test_init:
         else:
             commandlist = f"--val sim -c {cutoff} {simfile} outfile.txt".split()
         args = grsub.parse_commandline(commandlist)
-        gr = grsub.NeighborGraph(args)
+        if initmode=="lowchunksize":
+            gr = grsub.NeighborGraph(args, chunksize=20)
+        else:
+            gr = grsub.NeighborGraph(args)
         assert gr.nodes == set(nodes)
         for n1,n2 in itertools.combinations(nodes, 2):
             if ((n1,n2) in pairs) or ((n2,n1) in pairs):
@@ -115,7 +121,7 @@ class Test_init:
         assert gr.origdata["min_degree"] == min(nbcountlist)
         # how to check gr.average_dist from given info???
 
-    @pytest.mark.parametrize("initmode", ["parallel", "serial"])
+    @pytest.mark.parametrize("initmode", ["parallel", "serial", "lowchunksize"])
     def test_example_without_neighbors(self, random_pairfile_no_neighbors_50nodes, initmode):
         distfile, nodes, pairs, cutoff = random_pairfile_no_neighbors_50nodes
         if initmode=="parallel":
@@ -123,7 +129,10 @@ class Test_init:
         else:
             commandlist = f"--val dist -c {cutoff} {distfile} outfile.txt".split()
         args = grsub.parse_commandline(commandlist)
-        gr = grsub.NeighborGraph(args)
+        if initmode=="lowchunksize":
+            gr = grsub.NeighborGraph(args, chunksize=20)
+        else:
+            gr = grsub.NeighborGraph(args)
         assert gr.nodes == set(nodes)
         for node in nodes:
             assert node not in gr.neighbors
@@ -134,7 +143,7 @@ class Test_init:
         assert gr.origdata["max_degree"] == 0
         assert gr.origdata["min_degree"] == 0
 
-    @pytest.mark.parametrize("initmode", ["parallel", "serial"])
+    @pytest.mark.parametrize("initmode", ["parallel", "serial", "lowchunksize"])
     def test_parse_keepset(self, random_pairfile_50nodes, keepfile_n0_to_n9, initmode):
         distfile, nodes, pairs, cutoff = random_pairfile_50nodes
         keepfile, keepset = keepfile_n0_to_n9
@@ -143,7 +152,10 @@ class Test_init:
         else:
             commandlist = f"--val dist -c {cutoff} -k {keepfile} {distfile} outfile.txt".split()
         args = grsub.parse_commandline(commandlist)
-        gr = grsub.NeighborGraph(args)
+        if initmode=="lowchunksize":
+            gr = grsub.NeighborGraph(args, chunksize=20)
+        else:
+            gr = grsub.NeighborGraph(args)
         assert gr.keepset == {'n0', 'n1', 'n2', 'n3', 'n4', 'n5', 'n6', 'n7', 'n8', 'n9'}
 
 ###################################################################################################

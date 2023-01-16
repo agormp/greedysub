@@ -10,9 +10,9 @@ def pairfile_string_dist(nodes, pairs, cutoff):
     stringlist = []
     for n1, n2 in itertools.combinations(nodes,2):
         if ((n1,n2) in pairs) or ((n2,n1) in pairs):
-            stringlist.append("{}  {}  {}\n".format(n1,n2,cutoff/2))
+            stringlist.append("{} {} {}\n".format(n1,n2,cutoff/2))
         else:
-            stringlist.append("{}  {}  {}\n".format(n1,n2,cutoff*2))
+            stringlist.append("{} {} {}\n".format(n1,n2,cutoff*2))
     return "".join(stringlist)
 
 ############################################################################################
@@ -23,9 +23,9 @@ def pairfile_string_sim(nodes, pairs, cutoff):
     stringlist = []
     for n1, n2 in itertools.combinations(nodes,2):
         if ((n1,n2) in pairs) or ((n2,n1) in pairs):
-            stringlist.append("{}  {}  {}\n".format(n1,n2,cutoff*2))
+            stringlist.append("{} {} {}\n".format(n1,n2,cutoff*2))
         else:
-            stringlist.append("{}  {}  {}\n".format(n1,n2,cutoff/2))
+            stringlist.append("{} {} {}\n".format(n1,n2,cutoff/2))
     return "".join(stringlist)
 
 ############################################################################################
@@ -48,7 +48,7 @@ def pairfile_string_euclideangrid(n, d):
         x1,y1 = coords[i1]
         x2,y2 = coords[i2]
         dist = math.sqrt((x1 - x2)**2 + (y1 - y2)**2)
-        stringlist.append("{}  {}  {}\n".format(n1,n2,dist))
+        stringlist.append("{} {} {}\n".format(n1,n2,dist))
     return "".join(stringlist)
 
 ############################################################################################
