@@ -53,9 +53,13 @@ class Test_parse_commandline:
 
 class Test_init:
 
-    def test_example_with_neighbors(self, random_pairfile_50nodes):
+    @pytest.mark.parametrize("initmode", ["parallel", "serial"])
+    def test_example_with_neighbors(self, random_pairfile_50nodes, initmode):
         distfile, nodes, pairs, cutoff = random_pairfile_50nodes
-        commandlist = f"--val dist -c {cutoff} {distfile} outfile.txt".split()
+        if initmode=="parallel":
+            commandlist = f"--val dist -c {cutoff} --par {distfile} outfile.txt".split()
+        else:
+            commandlist = f"--val dist -c {cutoff} {distfile} outfile.txt".split()
         args = grsub.parse_commandline(commandlist)
         gr = grsub.NeighborGraph(args)
         assert gr.nodes == set(nodes)
@@ -80,9 +84,13 @@ class Test_init:
         assert gr.origdata["min_degree"] == min(nbcountlist)
         # how to check gr.average_dist from given info???
 
-    def test_example_with_neighbors_sim(self, random_pairfile_50nodes_sim):
+    @pytest.mark.parametrize("initmode", ["parallel", "serial"])
+    def test_example_with_neighbors_sim(self, random_pairfile_50nodes_sim, initmode):
         simfile, nodes, pairs, cutoff = random_pairfile_50nodes_sim
-        commandlist = f"--val sim -c {cutoff} {simfile} outfile.txt".split()
+        if initmode=="parallel":
+            commandlist = f"--val sim -c {cutoff} --par {simfile} outfile.txt".split()
+        else:
+            commandlist = f"--val sim -c {cutoff} {simfile} outfile.txt".split()
         args = grsub.parse_commandline(commandlist)
         gr = grsub.NeighborGraph(args)
         assert gr.nodes == set(nodes)
@@ -107,9 +115,13 @@ class Test_init:
         assert gr.origdata["min_degree"] == min(nbcountlist)
         # how to check gr.average_dist from given info???
 
-    def test_example_without_neighbors(self, random_pairfile_no_neighbors_50nodes):
+    @pytest.mark.parametrize("initmode", ["parallel", "serial"])
+    def test_example_without_neighbors(self, random_pairfile_no_neighbors_50nodes, initmode):
         distfile, nodes, pairs, cutoff = random_pairfile_no_neighbors_50nodes
-        commandlist = f"--val dist -c {cutoff} {distfile} outfile.txt".split()
+        if initmode=="parallel":
+            commandlist = f"--val dist -c {cutoff} --par {distfile} outfile.txt".split()
+        else:
+            commandlist = f"--val dist -c {cutoff} {distfile} outfile.txt".split()
         args = grsub.parse_commandline(commandlist)
         gr = grsub.NeighborGraph(args)
         assert gr.nodes == set(nodes)
@@ -122,10 +134,14 @@ class Test_init:
         assert gr.origdata["max_degree"] == 0
         assert gr.origdata["min_degree"] == 0
 
-    def test_parse_keepset(self, random_pairfile_50nodes, keepfile_n0_to_n9):
+    @pytest.mark.parametrize("initmode", ["parallel", "serial"])
+    def test_parse_keepset(self, random_pairfile_50nodes, keepfile_n0_to_n9, initmode):
         distfile, nodes, pairs, cutoff = random_pairfile_50nodes
         keepfile, keepset = keepfile_n0_to_n9
-        commandlist = f"--val dist -c {cutoff} -k {keepfile} {distfile} outfile.txt".split()
+        if initmode=="parallel":
+            commandlist = f"--val dist -c {cutoff} -k {keepfile} --par {distfile} outfile.txt".split()
+        else:
+            commandlist = f"--val dist -c {cutoff} -k {keepfile} {distfile} outfile.txt".split()
         args = grsub.parse_commandline(commandlist)
         gr = grsub.NeighborGraph(args)
         assert gr.keepset == {'n0', 'n1', 'n2', 'n3', 'n4', 'n5', 'n6', 'n7', 'n8', 'n9'}

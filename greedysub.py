@@ -2,6 +2,9 @@
 
 import argparse, sys, itertools
 import pandas as pd
+import dask
+import dask.dataframe as dd
+from dask.distributed import Client
 from collections import defaultdict
 from operator import itemgetter
 from pathlib import Path
@@ -74,6 +77,9 @@ def build_parser():
     parser.add_argument("-k", action="store", dest="keepfile", metavar="KEEPFILE", type=Path,
                           help="(optional) file with names of items that must be kept (one name per line)")
 
+    parser.add_argument("--par", action="store_true", dest="parallel",
+                          help="Use paralellization to speed up parsing of input file. Requires multiple cores")
+
     return parser
 
 ################################################################################################
@@ -85,37 +91,15 @@ class NeighborGraph:
 
 
     def __init__(self, args):
-
-        # self.neighbors: dict(node:set(node's neighbors))
-        # self.neighbor_count: dict(node:count of node's neighbors)
-        # Note: only nodes WITH neighbors are keys in these two dicts
-        # Note 2: these dicts are changed by algorithm during iteration
-
-        # self.nodes: set(all nodes)
-        # self.origdata["orignum"]: number of nodes in graph before reducing
-        # self.origdata["average_degree"]: average no. connections to a node before reducing
-        # self.origdata["max/min_degree"]: max/min no. connections to a node before reducing
-        # self.origdata["average_dist"]: average distance between pairs of nodes before reducing
-        nreadlines = 1000000
-        nodes = set()
+        if args.parallel == False:
+            nodes,valuesum,df = self.serial_parsing(args)
+        else:
+            nodes,valuesum,df = self.parallel_parsing(args)
         neighbors = defaultdict(set)
-        valuesum = 0
-        reader = pd.read_csv(args.infile, engine="c", delim_whitespace=True, chunksize=nreadlines,
-                             names=["name1", "name2", "val"], dtype={"name1":str, "name2":str, "val":float})
-
-        for df in reader:
-            nodes.update(df["name1"].values)
-            nodes.update(df["name2"].values)
-            valuesum += df["val"].values.sum()
-
-            if args.valuetype == "sim":
-                df = df.loc[df["val"].values > args.cutoff]
-            else:
-                df = df.loc[df["val"].values < args.cutoff]
-            df = df.loc[df["name1"].values != df["name2"].values]
-            for name1, name2 in zip(df["name1"].values, df["name2"].values):
-                neighbors[name1].add(name2)
-                neighbors[name2].add(name1)
+        for name1, name2 in zip(df["name1"].values, df["name2"].values):
+            neighbors[name1].add(name2)
+            neighbors[name2].add(name1)
+        del(df)
 
         # Convert to regular dict (not defaultdict) to avoid gotchas with key generation on access
         # Python note: would it be faster to just use dict.setdefault() during creation?
@@ -142,6 +126,51 @@ class NeighborGraph:
                     node = line.strip()
                     self.keepset.add(node)
         #self.df = df
+
+    ############################################################################################
+
+    def serial_parsing(self, args):
+        nodes = set()
+        neighbors = defaultdict(set)
+        valuesum = 0
+        reader = pd.read_csv(args.infile, engine="c", delim_whitespace=True, chunksize=1000000,
+                             names=["name1", "name2", "val"], dtype={"name1":str, "name2":str, "val":float})
+
+        for df in reader:
+            nodes.update(df["name1"].values)
+            nodes.update(df["name2"].values)
+            valuesum += df["val"].values.sum()
+
+            if args.valuetype == "sim":
+                df = df.loc[df["val"].values > args.cutoff]
+            else:
+                df = df.loc[df["val"].values < args.cutoff]
+        return nodes,valuesum,df
+
+    ############################################################################################
+
+    # Not sure I am doing this correctly...
+    # Seems that scheduler is still running after exit. Or something:
+    #    DeprecationWarning: There is no current event loop
+    # Only occurs during testing (since new Client call made while something still around?)
+    def parallel_parsing(self, args):
+        with Client() as client:
+            ddf = dd.read_csv(args.infile,
+                              delim_whitespace=True,
+                              names=["name1", "name2", "val"],
+                              dtype={"name1":str, "name2":str, "val":float})
+
+            nodes = dask.delayed(set)(ddf["name1"].values)
+            nodes2 = dask.delayed(set)(ddf["name2"].values)
+            nodes = nodes | nodes2
+            valuesum = ddf["val"].values.sum()
+            if args.valuetype == "sim":
+                ddf = ddf.loc[ddf["val"].values > args.cutoff]
+            else:
+                ddf = ddf.loc[ddf["val"].values < args.cutoff]
+            ddf = ddf.loc[ddf["name1"].values != ddf["name2"].values]
+            nodes,valuesum,df = dask.compute(nodes,valuesum,ddf, scheduler=client)
+        return nodes,valuesum,df
 
     ############################################################################################
 
