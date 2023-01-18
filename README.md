@@ -198,7 +198,17 @@ Given a graph G:
 
 ### Computational performance:
 
-The program has been optimized to run reasonably fast with limited memory usage. For large input files it may be faster to use the option `--par` which parallelizes reading and parsing of the input file (using [dask](https://docs.dask.org/en/stable/)). 
+The program has been optimized to run reasonably fast with limited memory usage, and to be able to handle large input files (also larger than available RAM). The option `--par` causes reading and parsing of the input file to be parallelized (using [dask](https://docs.dask.org/en/stable/)), and will typically be faster for large input. (However, the option should be considered experimental and may crash on some inputs). A known (current) limitation is that the neighbor graph (the dictionary keeping track of which nodes connect to which other nodes) has to be small enough to fit in memory.
 
-For instance: 100 million lines of pairwise distance info (about 3.3 GB) was analyzed in 17 seconds on a 2021 Macbook Pro with 10 cores, when using parallelization (`--par`). The same file analyzed in 29 seconds without parallelization.
+The table below shows examples of run times (wall-clock time) on a 2021 M1 Macbook Pro (10 cores, 64 GB memory), for different sizes of input files, with and without parallelization.
+Cutoffs were chosen such that inputs were reduced to approximately 500 names regardless of starting size (except for the smallest file where the cutoff was chosen such that the input was reduced to a third of its initial size).
 
+| Size of input file  | Size of input file: lines | No. names, original | No. names, reduced | Time (parallel) | Time (serial) |
+|      :-----:        |       :-----:             |        -----:       |     -------:       |   -------------:|   -----:      |
+|      1.6 MB         |       100 K (1E5)         |         447         |   c 1                 |                 |               |
+|      18 MB          |       1 mill (1E6)        |        1414         |   c 0.95             |                 |               |
+|      91 MB          |       5 mill (5E6)        |        3162         |   c 1.75               |                 |               |
+|      181 MB         |       10 mill (1E7)       |        4472         |   c 2.16           |                 |               |
+|      2.0 GB         |       100 mill (1E8)      |        14142        |   c 3.65           |                 |               |
+|                     |       1 bill (1E9)        |        44721        |                    |                 |               |
+          
