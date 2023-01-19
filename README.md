@@ -190,19 +190,32 @@ Given a graph G:
 
 The program has been optimized to run reasonably fast with limited memory usage, and to be able to handle large input files (also larger than available RAM). A known (current) limitation is that the neighbor graph (the dictionary keeping track of which nodes connect to which other nodes) has to be small enough to fit in memory.
 
-The table below shows examples of run times (wall-clock time) on a 2021 M1 Macbook Pro (10 cores, 64 GB memory), for different sizes of input files.
+The table below shows examples of run times (wall-clock time) on a 2021 M1 Macbook Pro (64 GB memory), for different sizes of input files.
+
+
+Cutoffs were chosen such that inputs were reduced to approximately 500 names regardless of starting size (except for the smallest file where the cutoff was chosen such that the input was reduced to a third of its initial size).
+
+| Size of input file  | Size of input file: lines | No. names, original | No. names, reduced | Wall-clock time |
+|      :-----:        |       :-----:             |        -----:       |     -------:       |   -------:      |
+|      1.6 MB         |       100 K (1E5)         |         447         |       151          |    0.36 s       |
+|      18 MB          |       1 mill (1E6)        |        1,414        |       509          |    0.52 s       |
+|      91 MB          |       5 mill (5E6)        |        3,162        |       500          |    1.23 s       |
+|      181 MB         |       10 mill (1E7)       |        4,472        |       501          |    2.23 s       |
+|      2.0 GB         |       100 mill (1E8)      |        14,142       |       505          |    21.3 s       |
+|      20 GB          |       1 bill (1E9)        |        44,721       |       501          |    4:27 m:s     |      
+          
 
 <!---
 
 Cutoffs were chosen such that inputs were reduced to approximately 500 names regardless of starting size (except for the smallest file where the cutoff was chosen such that the input was reduced to a third of its initial size).
 
-| Size of input file  | Size of input file: lines | No. names, original | No. names, reduced | Time (parallel) | Time (serial) |
-|      :-----:        |       :-----:             |        -----:       |     -------:       |   -------------:|   -----:      |
-|      1.6 MB         |       100 K (1E5)         |         447         |   c 1                 |                 |               |
-|      18 MB          |       1 mill (1E6)        |        1414         |   c 0.95             |                 |               |
-|      91 MB          |       5 mill (5E6)        |        3162         |   c 1.75               |                 |               |
-|      181 MB         |       10 mill (1E7)       |        4472         |   c 2.16           |                 |               |
-|      2.0 GB         |       100 mill (1E8)      |        14142        |   c 3.65           |                 |               |
-|                     |       1 bill (1E9)        |        44721        |                    |                 |               |
+| Size of input file  | Size of input file: lines | No. names, original | No. names, reduced | Time         |
+|      :-----:        |       :-----:             |        -----:       |     -------:       |   -------:   |
+|      1.6 MB         |       100 K (1E5)         |         447         |   c 1      151     |    0.36 s    |
+|      18 MB          |       1 mill (1E6)        |        1,414         |   c 0.95   509     |    0.52 s    |
+|      91 MB          |       5 mill (5E6)        |        3,162         |   c 1.75   500     |    1.23 s    |
+|      181 MB         |       10 mill (1E7)       |        4472         |   c 2.16   501     |    2.23 s    |
+|      2.0 GB         |       100 mill (1E8)      |        14142        |   c 3.65   505     |    21.3 s    |
+|      20 GB          |       1 bill (1E9)        |        44721        |   c 5.38   501     |                 |               |
           
 -->
