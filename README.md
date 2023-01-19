@@ -100,19 +100,19 @@ def3
 
 ### Usage examples
 
-#### Select items such that max pairwise similarity is 0.75, using "greedy-min" algorithm
+#### Select items such that pairwise *similarity* is less than 0.75, using "greedy-min" algorithm
 
 ```
 greedysub --algo min --val sim -c 0.75 simfile.txt resultfile.txt
 ```
 
-#### Select items such that minimum pairwise distance is 10, using "greedy-min" algorithm
+#### Select items such that pairwise *distance* is at least 10, using "greedy-min" algorithm
 
 ```
 greedysub --algo min --val dist -c 10 distfile.txt resultfile.txt
 ```
 
-#### Select items with minimum pairwise distance 3, while keeping items in keeplist.txt, using "greedy-max"
+#### Select items with pairwise *distance* at least 3, while keeping items in keeplist.txt, using "greedy-max"
 
 ```
 greedysub --algo max --val dist -c 3 -k keeplist.txt simfile.txt resultfile.txt
@@ -126,19 +126,19 @@ Basic information about the original and reduced data sets will be printed to st
 
 ```
 
-	Names in reduced set written to outfile.txt
+	Names in reduced set written to tests/outfile.txt
 
-	Number in original set:      1,500
-	Number in reduced set:       1,252
+	Number in original set:      1,414
+	Number in reduced set:         509
 
 	Node degree original set:
 	    min:       1
-	    max:     170
-	    ave:      11.67
+	    max:       9
+	    ave:       3.03
 
 	Node distances original set:
-	    ave:     370.01
-	    cutoff:   10.00
+	    ave:       5.12
+	    cutoff:    0.95
 
 ```
 
@@ -164,12 +164,13 @@ This problem is [strongly NP-hard](https://en.wikipedia.org/wiki/Strong_NP-compl
 
 #### Greedy-min algorithm
 
-Given a graph G:
+Given a graph G, and an empty set S:
 
 * While there are still edges in G:
 	* Select a node $\nu$ of *minimum* degree in G
-	* Remove $\nu$ and its neighbors
-* Output the set of selected nodes
+	* Add $\nu$ to S
+	* Remove $\nu$ and its neighbors from G
+* Output the set of nodes in S
 
 **Performance ratio:** On a graph with maximum node degree $\Delta$, it [has been shown ](https://link.springer.com/article/10.1007/BF02523693) that the greedy-min algorithm yields solutions that are within a factor $3 / (\Delta + 2)$ of the optimal solution. For instance, for $\Delta=4$ the algorithm is guaranteed to be no worse than $3 / (4 + 2) = 0.5$ times the optimal solution (i.e., the found solution will be at least half the size of the optimal one).
 
@@ -184,7 +185,7 @@ Given a graph G:
 
 **Performance ratio:** On a graph with maximum node degree $\Delta$, it [has been shown ](https://www.sciencedirect.com/science/article/pii/S0166218X02002056?via%3Dihub) that the greedy-max algorithm yields solutions that are within a factor $1 / (\Delta + 1)$ of the optimal solution. For instance, for $\Delta=4$ the algorithm is guaranteed to be no worse than $1 / (4 + 1) = 0.2$ times the optimal solution (i.e., the found solution will be at least 20% the size of the optimal one).
 
-**Note:** the greedy-max algorithm is the same as algorithm 2 from the following paper (but has been described in the context of graph theory prior to this): Hobohm et al.: ["Selection of representative protein data sets", Protein Sci. 1992. 1(3):409-17](https://pubmed.ncbi.nlm.nih.gov/1304348/).
+**Note:** the greedy-max algorithm is the same as algorithm 2 from the following paper, and has also been implemented in the [`hobohm` program](https://github.com/agormp/hobohm) (but the algorithm has been described in the context of graph theory prior to this work): Hobohm et al.: ["Selection of representative protein data sets", Protein Sci. 1992. 1(3):409-17](https://pubmed.ncbi.nlm.nih.gov/1304348/).
 
 ### Computational performance:
 
@@ -202,7 +203,7 @@ Cutoffs were chosen such that inputs were reduced to approximately 500 names reg
 |      91 MB          |       5 mill (5E6)        |        3,162        |       500          |    1.23 s       |
 |      181 MB         |       10 mill (1E7)       |        4,472        |       501          |    2.23 s       |
 |      2.0 GB         |       100 mill (1E8)      |        14,142       |       505          |    21.3 s       |
-|      20 GB          |       1 bill (1E9)        |        44,721       |       501          |    4:27 m:s     |      
+|      20 GB          |       1 bill (1E9)        |        44,721       |       501          |    4:12 m:s     |      
           
 
 <!---
