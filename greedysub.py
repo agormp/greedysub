@@ -145,11 +145,37 @@ class NeighborGraph:
 
     ############################################################################################
 
+    def parsing_b(self, args):
+        nodes = set()
+        neighbors = defaultdict(set)
+        valuesum = 0
+        chunksize = args.chunk * 1_000_000
+        reader = pd.read_csv(args.infile, engine="c", delim_whitespace=True, chunksize=chunksize,
+                             names=["name1", "name2", "val"], dtype={"name1":str, "name2":str, "val":float})
+
+        for df in reader:
+            nodes.update(df["name1"].values)
+            nodes.update(df["name2"].values)
+            valuesum += df["val"].values.sum()
+
+            if args.valuetype == "sim":
+                df = df.loc[df["val"].values > args.cutoff]
+            else:
+                df = df.loc[df["val"].values < args.cutoff]
+            df = df.loc[df["name1"].values != df["name2"].values]
+            for name1, name2 in zip(df["name1"].values, df["name2"].values):
+                neighbors[name1].add(name2)
+                neighbors[name2].add(name1)
+
+        return nodes,neighbors,valuesum
+
+    ############################################################################################
+
     # Not sure I am doing this correctly...
     # Seems that scheduler is still running after exit. Or something:
     #    DeprecationWarning: There is no current event loop
     # Only occurs during testing (since new Client call made while something still around?)
-    def parsing_b(self, args):
+    def parsing_c(self, args):
         import dask
         import dask.dataframe as dd
         from dask.distributed import Client
