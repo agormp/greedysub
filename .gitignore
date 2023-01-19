@@ -14,4 +14,4 @@ tests/fil-result
 tests/tmp*
 tests/*png
 tests/prof*
-tests/fil*
+tests/fil-result/
