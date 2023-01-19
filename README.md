@@ -44,21 +44,23 @@ python3 -m pip install --upgrade greedysub
 usage: greedysub    [-h] [--algo ALGORITHM] [--val VALUETYPE] [-c CUTOFF] [-k KEEPFILE]
                     INFILE OUTFILE
 
-Selects subset of items, based on list of pairwise similarities (or distances), such that no
-retained items are close neighbors
+Selects subset of items, based on list of pairwise similarities (or distances), such that
+no retained items are close neighbors
 
 positional arguments:
-  INFILE            input file containing similarity or distance for each pair of items: name1
-                    name2 value
-  OUTFILE           output file contatining neighborless subset of items (one name per line)
+  INFILE            input file containing similarity or distance for each pair of items:
+                    name1 name2 value
+  OUTFILE           output file contatining neighborless subset of items (one name per
+                    line)
 
 options:
   -h, --help        show this help message and exit
   --algo ALGORITHM  algorithm: min, max [default: min]
-  --val VALUETYPE   specify whether values in INFILE are distances (--val dist) or similarities
-                    (--val sim)
+  --val VALUETYPE   specify whether values in INFILE are distances (--val dist) or
+                    similarities (--val sim)
   -c CUTOFF         cutoff value for deciding which pairs are neighbors
-  -k KEEPFILE       (optional) file with names of items that must be kept (one name per line)
+  -k KEEPFILE       (optional) file with names of items that must be kept (one name per
+                    line)
 ```
 
 ### Input file
@@ -161,6 +163,8 @@ This problem is [strongly NP-hard](https://en.wikipedia.org/wiki/Strong_NP-compl
 [hard to approximate](https://projecteuclid.org/journals/acta-mathematica/volume-182/issue-1/Clique-is-hard-to-approximate-within-n1ε/10.1007/BF02392825.full). There are therefore no efficient, exact algorithms, although [there are exact algorithms with much better time complexity than the worst-case complexity of a naive, exhaustive search](https://arxiv.org/abs/1312.6260). 
 
 ### Implemented algorithms
+
+**Note:** of the two implemented, greedy algorithms, `greedy-min` has the best guaranteed performance. However, performance can be much better than the minimum guaranteed one, and occasionally `greedy-max` may find a larger set (this depends on the specific graph).
 
 #### Greedy-min algorithm
 
