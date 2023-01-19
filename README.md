@@ -1,6 +1,6 @@
 # greedysub
 
-![](https://img.shields.io/badge/version-1.2.3-blue)
+![](https://img.shields.io/badge/version-1.2.4-blue)
 [![PyPI downloads](https://static.pepy.tech/personalized-badge/greedysub?period=total&units=international_system&left_color=grey&right_color=blue&left_text=downloads)](https://pepy.tech/project/greedysub)
 
 The `greedysub` command-line program selects a subset of input data such that no retained items are closely related ("neighbors"). 
@@ -34,41 +34,31 @@ Upgrading to latest version:
 python3 -m pip install --upgrade greedysub
 ```
 
-## Dependencies
+## Primary Dependencies
 
-The primary dependencies of `greedysub` are:
-
-* [pandas](https://pandas.pydata.org)
-* [dask[complete]](https://docs.dask.org/en/stable/): For optional parallelization when reading and parsing input file.
-
-These packages are automatically included when using pip to install.
+* [pandas](https://pandas.pydata.org) (automatically installed when using pip to install greedysub)
 
 ## Usage
 
 ```
-usage: greedysub [-h] [--algo ALGORITHM] [--val VALUETYPE] [-c CUTOFF] [-k KEEPFILE]
-                    [--par]
+usage: greedysub    [-h] [--algo ALGORITHM] [--val VALUETYPE] [-c CUTOFF] [-k KEEPFILE]
                     INFILE OUTFILE
 
-Selects subset of items, based on list of pairwise similarities (or distances), such
-that no retained items are close neighbors
+Selects subset of items, based on list of pairwise similarities (or distances), such that no
+retained items are close neighbors
 
 positional arguments:
-  INFILE            input file containing similarity or distance for each pair of items:
-                    name1 name2 value
-  OUTFILE           output file contatining neighborless subset of items (one name per
-                    line)
+  INFILE            input file containing similarity or distance for each pair of items: name1
+                    name2 value
+  OUTFILE           output file contatining neighborless subset of items (one name per line)
 
 options:
   -h, --help        show this help message and exit
   --algo ALGORITHM  algorithm: min, max [default: min]
-  --val VALUETYPE   specify whether values in INFILE are distances (--val dist) or
-                    similarities (--val sim)
+  --val VALUETYPE   specify whether values in INFILE are distances (--val dist) or similarities
+                    (--val sim)
   -c CUTOFF         cutoff value for deciding which pairs are neighbors
-  -k KEEPFILE       (optional) file with names of items that must be kept (one name per
-                    line)
-  --par             Use parallelization to speed up parsing of large input files.
-                    Requires multiple cores
+  -k KEEPFILE       (optional) file with names of items that must be kept (one name per line)
 ```
 
 ### Input file
@@ -198,9 +188,12 @@ Given a graph G:
 
 ### Computational performance:
 
-The program has been optimized to run reasonably fast with limited memory usage, and to be able to handle large input files (also larger than available RAM). The option `--par` causes reading and parsing of the input file to be parallelized (using [dask](https://docs.dask.org/en/stable/)), and will typically be faster for large input. (However, the option should be considered experimental and may crash on some inputs). A known (current) limitation is that the neighbor graph (the dictionary keeping track of which nodes connect to which other nodes) has to be small enough to fit in memory.
+The program has been optimized to run reasonably fast with limited memory usage, and to be able to handle large input files (also larger than available RAM). A known (current) limitation is that the neighbor graph (the dictionary keeping track of which nodes connect to which other nodes) has to be small enough to fit in memory.
 
-The table below shows examples of run times (wall-clock time) on a 2021 M1 Macbook Pro (10 cores, 64 GB memory), for different sizes of input files, with and without parallelization.
+The table below shows examples of run times (wall-clock time) on a 2021 M1 Macbook Pro (10 cores, 64 GB memory), for different sizes of input files.
+
+<!---
+
 Cutoffs were chosen such that inputs were reduced to approximately 500 names regardless of starting size (except for the smallest file where the cutoff was chosen such that the input was reduced to a third of its initial size).
 
 | Size of input file  | Size of input file: lines | No. names, original | No. names, reduced | Time (parallel) | Time (serial) |
@@ -212,3 +205,4 @@ Cutoffs were chosen such that inputs were reduced to approximately 500 names reg
 |      2.0 GB         |       100 mill (1E8)      |        14142        |   c 3.65           |                 |               |
 |                     |       1 bill (1E9)        |        44721        |                    |                 |               |
           
+-->
