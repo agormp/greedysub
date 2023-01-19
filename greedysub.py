@@ -2,9 +2,6 @@
 
 import argparse, sys, itertools
 import pandas as pd
-import dask
-import dask.dataframe as dd
-from dask.distributed import Client
 from collections import defaultdict
 from operator import itemgetter
 from pathlib import Path
@@ -77,9 +74,10 @@ def build_parser():
     parser.add_argument("-k", action="store", dest="keepfile", metavar="KEEPFILE", type=Path,
                           help="(optional) file with names of items that must be kept (one name per line)")
 
-    parser.add_argument("--par", action="store_true", dest="parallel",
-                          help="Use parallelization to speed up parsing of large input files. Requires multiple cores")
+    parser.add_argument("--parser", action='store', choices=["main", "b"], default="main",
+                      help=argparse.SUPPRESS)
 
+    parser.add_argument("--chunk", action='store', type=float, default=1, help=argparse.SUPPRESS)
     return parser
 
 ################################################################################################
@@ -90,11 +88,9 @@ class NeighborGraph:
     Methods for interrogating and changing graph"""
 
 
-    def __init__(self, args, chunksize=1000000):
-        if args.parallel == False:
-            nodes,neighbors,valuesum = self.serial_parsing(args, chunksize)
-        else:
-            nodes,neighbors,valuesum = self.parallel_parsing(args)
+    def __init__(self, args):
+        parsefunc_dict = {"main":self.parsing_main, "b":self.parsing_b}
+        nodes,neighbors,valuesum = parsefunc_dict[args.parser](args)
 
         # Convert to regular dict (not defaultdict) to avoid gotchas with key generation on access
         # Python note: would it be faster to just use dict.setdefault() during creation?
@@ -123,10 +119,11 @@ class NeighborGraph:
 
     ############################################################################################
 
-    def serial_parsing(self, args, chunksize):
+    def parsing_main(self, args):
         nodes = set()
         neighbors = defaultdict(set)
         valuesum = 0
+        chunksize = args.chunk * 1_000_000
         reader = pd.read_csv(args.infile, engine="c", delim_whitespace=True, chunksize=chunksize,
                              names=["name1", "name2", "val"], dtype={"name1":str, "name2":str, "val":float})
 
@@ -152,7 +149,10 @@ class NeighborGraph:
     # Seems that scheduler is still running after exit. Or something:
     #    DeprecationWarning: There is no current event loop
     # Only occurs during testing (since new Client call made while something still around?)
-    def parallel_parsing(self, args):
+    def parsing_b(self, args):
+        import dask
+        import dask.dataframe as dd
+        from dask.distributed import Client
         with Client() as client:
             ddf = dd.read_csv(args.infile,
                               delim_whitespace=True,
