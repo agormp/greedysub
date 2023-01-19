@@ -168,24 +168,24 @@ This problem is [strongly NP-hard](https://en.wikipedia.org/wiki/Strong_NP-compl
 
 #### Greedy-min algorithm
 
-Given a graph G, and an empty set S:
+Given a graph $G$, and an empty set $S$:
 
-* While there are still edges in G:
-	* Select a node $\nu$ of *minimum* degree in G
-	* Add $\nu$ to S
-	* Remove $\nu$ and its neighbors from G
-* Output the set of nodes in S
+* While there are still edges in $G$:
+	* Select a node $\nu$ of *minimum* degree in $G$
+	* Add $\nu$ to $S$
+	* Remove $\nu$ and its neighbors from $G$
+* Output the set of nodes in $S$
 
 **Performance ratio:** On a graph with maximum node degree $\Delta$, it [has been shown ](https://link.springer.com/article/10.1007/BF02523693) that the greedy-min algorithm yields solutions that are within a factor $3 / (\Delta + 2)$ of the optimal solution. For instance, for $\Delta=4$ the algorithm is guaranteed to be no worse than $3 / (4 + 2) = 0.5$ times the optimal solution (i.e., the found solution will be at least half the size of the optimal one).
 
 #### Greedy-max algorithm
 
-Given a graph G:
+Given a graph $G$:
 
-* While there are still edges in G:
-	* Select a node $\nu$ of *maximum* degree in G
+* While there are still edges in $G$:
+	* Select a node $\nu$ of *maximum* degree in $G$
 	* Remove $\nu$
-* Output set of nodes left in G
+* Output set of nodes left in $G$
 
 **Performance ratio:** On a graph with maximum node degree $\Delta$, it [has been shown ](https://www.sciencedirect.com/science/article/pii/S0166218X02002056?via%3Dihub) that the greedy-max algorithm yields solutions that are within a factor $1 / (\Delta + 1)$ of the optimal solution. For instance, for $\Delta=4$ the algorithm is guaranteed to be no worse than $1 / (4 + 1) = 0.2$ times the optimal solution (i.e., the found solution will be at least 20% the size of the optimal one).
 
