@@ -74,7 +74,7 @@ def build_parser():
     parser.add_argument("-k", action="store", dest="keepfile", metavar="KEEPFILE", type=Path,
                           help="(optional) file with names of items that must be kept (one name per line)")
 
-    parser.add_argument("--parser", action='store', choices=["main", "b"], default="main",
+    parser.add_argument("--parser", action='store', choices=["a", "b", "c"], default="a",
                       help=argparse.SUPPRESS)
 
     parser.add_argument("--chunk", action='store', type=float, default=1, help=argparse.SUPPRESS)
@@ -87,9 +87,9 @@ class NeighborGraph:
     """Stores information about nodes and their connections.
     Methods for interrogating and changing graph"""
 
-
+    #@profile
     def __init__(self, args):
-        parsefunc_dict = {"main":self.parsing_main, "b":self.parsing_b}
+        parsefunc_dict = {"a":self.parsing_main, "b":self.parsing_b, "c":self.parsing_c}
         nodes,neighbors,valuesum = parsefunc_dict[args.parser](args)
 
         # Convert to regular dict (not defaultdict) to avoid gotchas with key generation on access
@@ -119,6 +119,7 @@ class NeighborGraph:
 
     ############################################################################################
 
+    #@profile
     def parsing_main(self, args):
         nodes = set()
         neighbors = defaultdict(set)
@@ -126,7 +127,6 @@ class NeighborGraph:
         chunksize = args.chunk * 1_000_000
         reader = pd.read_csv(args.infile, engine="c", delim_whitespace=True, chunksize=chunksize,
                              names=["name1", "name2", "val"], dtype={"name1":str, "name2":str, "val":float})
-
         for df in reader:
             nodes.update(df["name1"].values)
             nodes.update(df["name2"].values)
@@ -136,33 +136,6 @@ class NeighborGraph:
                 df = df.loc[df["val"].values > args.cutoff]
             else:
                 df = df.loc[df["val"].values < args.cutoff]
-            df = df.loc[df["name1"].values != df["name2"].values]
-            for name1, name2 in zip(df["name1"].values, df["name2"].values):
-                neighbors[name1].add(name2)
-                neighbors[name2].add(name1)
-
-        return nodes,neighbors,valuesum
-
-    ############################################################################################
-
-    def parsing_b(self, args):
-        nodes = set()
-        neighbors = defaultdict(set)
-        valuesum = 0
-        chunksize = args.chunk * 1_000_000
-        reader = pd.read_csv(args.infile, engine="c", delim_whitespace=True, chunksize=chunksize,
-                             names=["name1", "name2", "val"], dtype={"name1":str, "name2":str, "val":float})
-
-        for df in reader:
-            nodes.update(df["name1"].values)
-            nodes.update(df["name2"].values)
-            valuesum += df["val"].values.sum()
-
-            if args.valuetype == "sim":
-                df = df.loc[df["val"].values > args.cutoff]
-            else:
-                df = df.loc[df["val"].values < args.cutoff]
-            df = df.loc[df["name1"].values != df["name2"].values]
             for name1, name2 in zip(df["name1"].values, df["name2"].values):
                 neighbors[name1].add(name2)
                 neighbors[name2].add(name1)
@@ -175,7 +148,7 @@ class NeighborGraph:
     # Seems that scheduler is still running after exit. Or something:
     #    DeprecationWarning: There is no current event loop
     # Only occurs during testing (since new Client call made while something still around?)
-    def parsing_c(self, args):
+    def parsing_b(self, args):
         import dask
         import dask.dataframe as dd
         from dask.distributed import Client
@@ -200,6 +173,30 @@ class NeighborGraph:
         for name1, name2 in zip(df["name1"].values, df["name2"].values):
             neighbors[name1].add(name2)
             neighbors[name2].add(name1)
+
+        return nodes,neighbors,valuesum
+
+    ############################################################################################
+
+    def parsing_c(self, args):
+        nodes = set()
+        neighbors = defaultdict(set)
+        valuesum = 0
+        import operator, csv
+        if args.valuetype == "sim":
+            comparison = operator.gt
+        else:
+            comparison = operator.lt
+
+        with open(args.infile, "r") as infile:
+            reader = csv.DictReader(infile, delimiter=" ", fieldnames=["n1", "n2", "v"])
+            for row in reader:
+                n1,n2 = row["n1"],row["n2"]
+                nodes.add(n1)
+                nodes.add(n2)
+                if comparison(float(row["v"]), args.cutoff):
+                    neighbors[n1].add(n2)
+                    neighbors[n2].add(n1)
 
         return nodes,neighbors,valuesum
 
