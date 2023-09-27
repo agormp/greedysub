@@ -35,6 +35,10 @@ Upgrading to latest version:
 python3 -m pip install --upgrade greedysub
 ```
 
+## Citation
+
+To cite greedysub: use the link in the right sidebar under About --> Cite this repository.
+
 ## Primary Dependencies
 
 * [pandas](https://pandas.pydata.org) (automatically installed when using pip to install greedysub)
