@@ -32,7 +32,6 @@ def main(commandlist=None):
 # Python note: "commandlist" is to enable unit testing of argparse code
 # Will be "None" when run in script mode, and argparse will then automatically take values from sys.argv[1:]
 
-
 def parse_commandline(commandlist):
     parser = build_parser()
     args = parser.parse_args(commandlist)
