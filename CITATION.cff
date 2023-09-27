@@ -1,4 +1,4 @@
-cff-version: 1.0.3
+cff-version: 1.2.0
 title: "greedysub"
 version: 1.2.5
 date-released: 2023-09-27
@@ -8,4 +8,3 @@ authors:
     orcid: "https://orcid.org/0000-0001-9650-8965" 
 repository-code: "https://github.com/agormp/greedysub"
 doi: "10.5281/zenodo.8383075"
-
