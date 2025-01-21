@@ -53,13 +53,12 @@ class Test_parse_commandline:
 
 class Test_init:
 
-    @pytest.mark.parametrize("parser, chunksize",
-                             [("parser_a", "chunk_1"), ("parser_a", "chunk_0.00001"), ("parser_b", "chunk_1")])
-    def test_example_with_neighbors(self, random_pairfile_50nodes, parser, chunksize):
+    @pytest.mark.parametrize("chunksize",
+                             ["chunk_1", "chunk_0.00001", "chunk_1"])
+    def test_example_with_neighbors(self, random_pairfile_50nodes, chunksize):
         distfile, nodes, pairs, cutoff = random_pairfile_50nodes
-        parser = parser.replace("parser_", "")
         chunk = chunksize.replace("chunk_", "")
-        commandlist = f"--val dist -c {cutoff} --parser {parser} --chunk {chunk} {distfile} outfile.txt".split()
+        commandlist = f"--val dist -c {cutoff} --chunk {chunk} {distfile} outfile.txt".split()
         args = grsub.parse_commandline(commandlist)
         gr = grsub.NeighborGraph(args)
         assert gr.nodes == set(nodes)
@@ -84,13 +83,12 @@ class Test_init:
         assert gr.origdata["min_degree"] == min(nbcountlist)
         # how to check gr.average_dist from given info???
 
-    @pytest.mark.parametrize("parser, chunksize",
-                             [("parser_a", "chunk_1"), ("parser_a", "chunk_0.00001"), ("parser_b", "chunk_1")])
-    def test_example_with_neighbors_sim(self, random_pairfile_50nodes_sim, parser, chunksize):
+    @pytest.mark.parametrize("chunksize",
+                             ["chunk_1", "chunk_0.00001", "chunk_1"])
+    def test_example_with_neighbors_sim(self, random_pairfile_50nodes_sim, chunksize):
         simfile, nodes, pairs, cutoff = random_pairfile_50nodes_sim
-        parser = parser.replace("parser_", "")
         chunk = chunksize.replace("chunk_", "")
-        commandlist = f"--val sim -c {cutoff} --parser {parser} --chunk {chunk} {simfile} outfile.txt".split()
+        commandlist = f"--val sim -c {cutoff} --chunk {chunk} {simfile} outfile.txt".split()
         args = grsub.parse_commandline(commandlist)
         gr = grsub.NeighborGraph(args)
         assert gr.nodes == set(nodes)
@@ -115,13 +113,12 @@ class Test_init:
         assert gr.origdata["min_degree"] == min(nbcountlist)
         # how to check gr.average_dist from given info???
 
-    @pytest.mark.parametrize("parser, chunksize",
-                             [("parser_a", "chunk_1"), ("parser_a", "chunk_0.00001"), ("parser_b", "chunk_1")])
-    def test_example_without_neighbors(self, random_pairfile_no_neighbors_50nodes, parser, chunksize):
+    @pytest.mark.parametrize("chunksize",
+                             ["chunk_1", "chunk_0.00001", "chunk_1"])
+    def test_example_without_neighbors(self, random_pairfile_no_neighbors_50nodes, chunksize):
         distfile, nodes, pairs, cutoff = random_pairfile_no_neighbors_50nodes
-        parser = parser.replace("parser_", "")
         chunk = chunksize.replace("chunk_", "")
-        commandlist = f"--val dist -c {cutoff} --parser {parser} --chunk {chunk} {distfile} outfile.txt".split()
+        commandlist = f"--val dist -c {cutoff} --chunk {chunk} {distfile} outfile.txt".split()
         args = grsub.parse_commandline(commandlist)
         gr = grsub.NeighborGraph(args)
         assert gr.nodes == set(nodes)
@@ -134,14 +131,13 @@ class Test_init:
         assert gr.origdata["max_degree"] == 0
         assert gr.origdata["min_degree"] == 0
 
-    @pytest.mark.parametrize("parser, chunksize",
-                             [("parser_a", "chunk_1"), ("parser_a", "chunk_0.00001"), ("parser_b", "chunk_1")])
-    def test_parse_keepset(self, random_pairfile_50nodes, keepfile_n0_to_n9, parser, chunksize):
+    @pytest.mark.parametrize("chunksize",
+                             ["chunk_1", "chunk_0.00001", "chunk_1"])
+    def test_parse_keepset(self, random_pairfile_50nodes, keepfile_n0_to_n9, chunksize):
         distfile, nodes, pairs, cutoff = random_pairfile_50nodes
         keepfile, keepset = keepfile_n0_to_n9
-        parser = parser.replace("parser_", "")
         chunk = chunksize.replace("chunk_", "")
-        commandlist = f"--val dist -c {cutoff} --parser {parser} --chunk {chunk} -k {keepfile} {distfile} outfile.txt".split()
+        commandlist = f"--val dist -c {cutoff} --chunk {chunk} -k {keepfile} {distfile} outfile.txt".split()
         args = grsub.parse_commandline(commandlist)
         gr = grsub.NeighborGraph(args)
         assert gr.keepset == {'n0', 'n1', 'n2', 'n3', 'n4', 'n5', 'n6', 'n7', 'n8', 'n9'}
