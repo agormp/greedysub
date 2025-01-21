@@ -84,7 +84,7 @@ class NeighborGraph:
     Methods for interrogating and changing graph"""
 
     def __init__(self, args):
-        nodes,neighbors,valuesum = parsing(args)
+        nodes,neighbors,valuesum = self.parsing(args)
 
         # Convert to regular dict (not defaultdict) to avoid gotchas with key generation on access
         # Python note: would it be faster to just use dict.setdefault() during creation?
