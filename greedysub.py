@@ -73,9 +73,6 @@ def build_parser():
     parser.add_argument("-k", action="store", dest="keepfile", metavar="KEEPFILE", type=Path,
                           help="(optional) file with names of items that must be kept (one name per line)")
 
-    parser.add_argument("--parser", action='store', choices=["a", "b", "c"], default="a",
-                      help=argparse.SUPPRESS)
-
     parser.add_argument("--chunk", action='store', type=float, default=1, help=argparse.SUPPRESS)
     return parser
 
@@ -86,10 +83,8 @@ class NeighborGraph:
     """Stores information about nodes and their connections.
     Methods for interrogating and changing graph"""
 
-    #@profile
     def __init__(self, args):
-        parsefunc_dict = {"a":self.parsing_main, "b":self.parsing_b, "c":self.parsing_c}
-        nodes,neighbors,valuesum = parsefunc_dict[args.parser](args)
+        nodes,neighbors,valuesum = parsing(args)
 
         # Convert to regular dict (not defaultdict) to avoid gotchas with key generation on access
         # Python note: would it be faster to just use dict.setdefault() during creation?
@@ -118,8 +113,7 @@ class NeighborGraph:
 
     ############################################################################################
 
-    #@profile
-    def parsing_main(self, args):
+    def parsing(self, args):
         nodes = set()
         neighbors = defaultdict(set)
         valuesum = 0
@@ -138,64 +132,6 @@ class NeighborGraph:
             for name1, name2 in zip(df["name1"].values, df["name2"].values):
                 neighbors[name1].add(name2)
                 neighbors[name2].add(name1)
-
-        return nodes,neighbors,valuesum
-
-    ############################################################################################
-
-    # Not sure I am doing this correctly...
-    # Seems that scheduler is still running after exit. Or something:
-    #    DeprecationWarning: There is no current event loop
-    # Only occurs during testing (since new Client call made while something still around?)
-    def parsing_b(self, args):
-        import dask
-        import dask.dataframe as dd
-        from dask.distributed import Client
-        with Client() as client:
-            ddf = dd.read_csv(args.infile,
-                              delim_whitespace=True,
-                              names=["name1", "name2", "val"],
-                              dtype={"name1":str, "name2":str, "val":float})
-
-            nodes = dask.delayed(set)(ddf["name1"].values)
-            nodes2 = dask.delayed(set)(ddf["name2"].values)
-            nodes = nodes | nodes2
-            valuesum = ddf["val"].values.sum()
-            if args.valuetype == "sim":
-                ddf = ddf.loc[ddf["val"].values > args.cutoff]
-            else:
-                ddf = ddf.loc[ddf["val"].values < args.cutoff]
-            ddf = ddf.loc[ddf["name1"].values != ddf["name2"].values]
-            nodes,valuesum,df = dask.compute(nodes,valuesum,ddf, scheduler=client)
-
-        neighbors = defaultdict(set)
-        for name1, name2 in zip(df["name1"].values, df["name2"].values):
-            neighbors[name1].add(name2)
-            neighbors[name2].add(name1)
-
-        return nodes,neighbors,valuesum
-
-    ############################################################################################
-
-    def parsing_c(self, args):
-        nodes = set()
-        neighbors = defaultdict(set)
-        valuesum = 0
-        import operator, csv
-        if args.valuetype == "sim":
-            comparison = operator.gt
-        else:
-            comparison = operator.lt
-
-        with open(args.infile, "r") as infile:
-            reader = csv.DictReader(infile, delimiter=" ", fieldnames=["n1", "n2", "v"])
-            for row in reader:
-                n1,n2 = row["n1"],row["n2"]
-                nodes.add(n1)
-                nodes.add(n2)
-                if comparison(float(row["v"]), args.cutoff):
-                    neighbors[n1].add(n2)
-                    neighbors[n2].add(n1)
 
         return nodes,neighbors,valuesum
 
