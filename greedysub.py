@@ -118,7 +118,7 @@ class NeighborGraph:
         neighbors = defaultdict(set)
         valuesum = 0
         chunksize = args.chunk * 1_000_000
-        reader = pd.read_csv(args.infile, engine="c", delim_whitespace=True, chunksize=chunksize,
+        reader = pd.read_csv(args.infile, engine="c", sep=r"\s+", chunksize=chunksize,
                              names=["name1", "name2", "val"], dtype={"name1":str, "name2":str, "val":float})
         for df in reader:
             nodes.update(df["name1"].values)
