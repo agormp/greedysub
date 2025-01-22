@@ -4,6 +4,7 @@
 [![PyPI downloads](https://static.pepy.tech/personalized-badge/greedysub?period=total&units=international_system&left_color=grey&right_color=blue&left_text=PyPI%20downloads)](https://pepy.tech/project/greedysub)
 [![DOI](https://zenodo.org/badge/573046730.svg)](https://zenodo.org/doi/10.5281/zenodo.8383075)
 ![Tests](https://github.com/agormp/greedysub/actions/workflows/tests.yml/badge.svg)
+![Codecov](https://codecov.io/gh/agormp/greedysub/branch/main/graph/badge.svg)
 
 The `greedysub` command-line program selects a subset of input data such that no retained items are closely related ("neighbors"). 
 
