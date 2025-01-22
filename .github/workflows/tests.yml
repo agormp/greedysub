@@ -24,4 +24,4 @@ jobs:
           pip install pytest pytest-cov
       
       - name: Run tests
-        run: pytest --cov=greedysub tests/
+        run: python -m pytest --cov=greedysub tests/
